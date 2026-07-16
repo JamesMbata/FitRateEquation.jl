@@ -31,6 +31,7 @@ catch err
     false
 end
 include("cv.jl")
+include("promotable.jl")
 include("macro_collect.jl")
 include("cha_laws.jl")
 include("cha_invert.jl")
