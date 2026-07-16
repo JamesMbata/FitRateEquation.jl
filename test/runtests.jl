@@ -24,6 +24,7 @@ using Test
     include("test_modes_cascade.jl")
     include("test_parallel_equivalence.jl")
     include("test_runners.jl")
+    include("test_byte_identity.jl")
     # PGD
     include("test_cha_pgd_laws.jl")
     include("test_pgd_data.jl")
