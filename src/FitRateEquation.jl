@@ -46,6 +46,7 @@ include("run.jl")
 include("configs/G6PD.jl")
 include("configs/PGD.jl")
 include("configs/HK1.jl")
+include("plot_support.jl")
 include("cli.jl")
 
 export EnzymeWiring, register_enzyme!
