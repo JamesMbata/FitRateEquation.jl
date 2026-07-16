@@ -247,7 +247,15 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
     logratio = fill(NaN, n)
     penalty = 0.0
     groups = unique(d.group)
-    for g in groups
+    # Single pass per group: gather idx ONCE (was findall'd twice -- once here, once again in
+    # a second centering loop). Prediction and per-group centering are computed together, but
+    # each group's variance contribution is STASHED in group_variances rather than added to
+    # `total` inline, so the final fold order below is byte-identical to the old two-loop
+    # structure (`total = penalty` first, THEN group variances added in group order) -- adding
+    # inline here would interleave penalty and variance terms into `total` in a different order
+    # and risk perturbing the last bits (floating-point addition is not associative).
+    group_variances = Vector{Float64}(undef, length(groups))
+    for (gi, g) in enumerate(groups)
         idx = findall(==(g), d.group)
         # keq for this figure: scalar override if given, else the figure's own (uniform) d.keq.
         keq_g = if keq === nothing
@@ -271,14 +279,17 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
                 logratio[i] = log(abs(v)) - log(abs(o))
             end
         end
+        vals = filter(isfinite, logratio[idx])
+        if isempty(vals)
+            group_variances[gi] = 0.0
+        else
+            μ = sum(vals) / length(vals)
+            group_variances[gi] = sum(x -> (x - μ)^2, vals)
+        end
     end
     total = penalty
-    for g in groups
-        idx = findall(==(g), d.group)
-        vals = filter(isfinite, logratio[idx])
-        isempty(vals) && continue
-        μ = sum(vals) / length(vals)
-        total += sum(x -> (x - μ)^2, vals)
+    for v in group_variances
+        total += v
     end
     total / n
 end
