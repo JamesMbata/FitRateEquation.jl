@@ -22,9 +22,28 @@ function config_for(enzyme::Symbol)
 end
 
 "Detect the enzyme from a results path: the component directly under `fitting/`."
+# Fitted-variant → enzyme. As a standalone package, run dirs are arbitrary `outdir`s (no
+# `fitting/<ENZYME>/` path convention), so detect the enzyme from the run's own
+# macro_constants.csv `variant` column; fall back to the legacy path layout.
+const _VARIANT_TO_ENZYME = Dict(
+    "SS_NADPH_release_rate_eq" => :G6PD, "no_atp" => :G6PD,
+    "cha_base" => :PGD,
+    "H1" => :HK1, "H4" => :HK1,
+)
+
 function detect_enzyme(results_dir::AbstractString)
+    mc = joinpath(results_dir, "macro_constants.csv")
+    if isfile(mc)
+        rows = readlines(mc)
+        for row in Iterators.drop(rows, 1)            # skip header
+            v = String(first(split(row, ',')))
+            haskey(_VARIANT_TO_ENZYME, v) && return _VARIANT_TO_ENZYME[v]
+        end
+    end
+    # Fallback: legacy PPP_Experiments `fitting/<ENZYME>/` path layout.
     m = match(r"(?:^|/)fitting/([^/]+)/", normpath(abspath(results_dir)) * "/")
-    m === nothing && error("detect_enzyme: no `fitting/<ENZYME>/` segment in $results_dir")
+    m === nothing && error("detect_enzyme: cannot determine enzyme for $results_dir " *
+        "(no recognized variant in macro_constants.csv and no `fitting/<ENZYME>/` path segment)")
     enz = Symbol(m.captures[1])
     enz in (:G6PD, :PGD, :HK1) ||
         error("detect_enzyme: unrecognized enzyme `$enz` under fitting/ in $results_dir")
