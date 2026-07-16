@@ -1,0 +1,3 @@
+#!/usr/bin/env julia
+using FitRateEquation
+exit(FitRateEquation.cli_main(ARGS))

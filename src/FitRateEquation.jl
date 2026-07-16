@@ -46,6 +46,7 @@ include("run.jl")
 include("configs/G6PD.jl")
 include("configs/PGD.jl")
 include("configs/HK1.jl")
+include("cli.jl")
 
 export EnzymeWiring, register_enzyme!
 export consensus_variants
@@ -54,7 +55,8 @@ export mode_agreement
 export run_variant, run_all, write_outputs
 export g6pd_config, pgd_config, hk1_config
 export setup_workers
-export run_g6pd, run_pgd, run_hk1
+export run_g6pd, run_pgd, run_hk1, run_g6pd_noatp
+export cli_main
 
 # plot_consensus_fit stub — the real method lives in the CairoMakie package extension.
 function plot_consensus_fit end

@@ -542,12 +542,19 @@ function _default_outdir(enzyme::AbstractString, smoke::Bool)
     joinpath(pwd(), "results", "$(enzyme)_" * Dates.format(Dates.today(), "yyyy-mm-dd") * (smoke ? "_smoke" : ""))
 end
 
-function _run_enzyme(cfg, enzyme::AbstractString; outdir=nothing, smoke::Bool=false, nprocs=nothing)
+function _run_enzyme(cfg, enzyme::AbstractString; outdir=nothing, smoke::Bool=false, nprocs=nothing,
+                     variants=nothing, row_filter=nothing)
     b = _budget(smoke)
     od = isnothing(outdir) ? _default_outdir(enzyme, smoke) : outdir
     setup_workers(nprocs)
     @info "FitRateEquation run starting" enzyme nworkers=nworkers() smoke outdir=od
-    run_all(cfg; outdir=od, n_restarts=b.n_restarts, maxiter=b.maxiter, maxtime=b.maxtime)
+    # `variants`/`row_filter` are forwarded to `run_all` only when the caller supplies them
+    # (e.g. `run_g6pd_noatp`'s :no_atp variant + ATP-row filter), so the plain per-enzyme
+    # runners (run_g6pd/run_pgd/run_hk1) keep run_all's own defaults untouched.
+    extra = NamedTuple()
+    variants   === nothing || (extra = merge(extra, (variants=variants,)))
+    row_filter === nothing || (extra = merge(extra, (row_filter=row_filter,)))
+    run_all(cfg; outdir=od, n_restarts=b.n_restarts, maxiter=b.maxiter, maxtime=b.maxtime, extra...)
 end
 
 """
@@ -561,6 +568,22 @@ sanity check. `nprocs` overrides the local worker-count default (see `setup_work
 SLURM allocation always overrides `nprocs`. Returns the `run_all` results.
 """
 run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing) = _run_enzyme(g6pd_config(), "G6PD"; outdir, smoke, nprocs)
+
+"""
+    run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
+
+The ATP-free (`:no_atp`) G6PD variant: fits `run_all` with `variants=[:no_atp]` and
+`row_filter=drop_atp_rows`, so ATP-bearing rows (ATP > 0) are dropped from the corpus before
+the ATP-blind `:no_atp` mechanism is fit (the ATP-tolerant deploy variant is `run_g6pd`; this
+is the library replacement for the standalone `run_g6pd_noatp.jl` launcher). `data_csv`, if
+given, overrides the bundled G6PD corpus (see `g6pd_config`); otherwise the default corpus is
+used. Default outdir is labeled `G6PD_noatp_<date>[_smoke]` (distinct from plain `run_g6pd`'s
+`G6PD_<date>[_smoke]`) so the two runs never collide in `./results/`.
+"""
+function run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
+    cfg = data_csv === nothing ? g6pd_config() : g6pd_config(; data_csv=data_csv)
+    _run_enzyme(cfg, "G6PD_noatp"; outdir, smoke, nprocs, variants=[:no_atp], row_filter=drop_atp_rows)
+end
 
 """
     run_pgd(; outdir=nothing, smoke=false, nprocs=nothing)
