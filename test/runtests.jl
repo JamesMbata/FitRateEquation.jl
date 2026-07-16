@@ -38,4 +38,6 @@ using Test
     include("test_hk1_fit.jl")
     # Plotting (non-render assertions; render covered in Task 8)
     include("test_plot_consensus_fit.jl")
+    # Docs sanity
+    include("test_docs.jl")
 end
