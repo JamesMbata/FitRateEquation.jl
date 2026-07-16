@@ -249,23 +249,38 @@ function run_all(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_
     results
 end
 
-# Short git SHA of the repo containing `dir` (or "unknown" off a checkout/sandbox).
+# Short git SHA of the repo containing `dir`, or "unknown" off a checkout that has no
+# `.git` (an installed package depot, `Pkg.test`'s sandbox, etc.). Stderr is piped to
+# `devnull` so a missing-repo `git` failure never leaks "fatal: not a git repository"
+# onto the caller's stderr/test output — the try/catch already handles the outcome, the
+# subprocess just should not narrate the miss.
 function _git_sha(dir)
     try
-        return readchomp(`git -C $dir rev-parse --short HEAD`)
+        return readchomp(pipeline(`git -C $dir rev-parse --short HEAD`; stderr=devnull))
     catch
         return "unknown"
     end
 end
 
-# Self-certifying provenance: code SHAs + the exact fit budget/seed + corpus size, so a
-# run dir is interpretable (full vs smoke, which code) without inferring from dir name.
+# Self-certifying provenance: the package's own version + the EnzymeRates dependency SHA
+# + the exact fit budget/seed + corpus size, so a run dir is interpretable (full vs smoke,
+# which code) without inferring from dir name.
+#
+# The package's own identity is recorded via `pkgversion`, NOT a self-repo git SHA: once
+# FitRateEquation is an installed/tested PACKAGE (not the standalone consensus_macro
+# script this was ported from), `@__DIR__` under `Pkg.test`'s sandbox — and any installed
+# depot — has no `.git` next to the source, so shelling out to `git` for our own version
+# always failed (silently returning "unknown") while still leaking git's stderr. The
+# package version is the correct, always-available identity for this field. EnzymeRates
+# is a `[sources]`-pinned dependency that DOES live in a real git checkout in typical dev
+# setups, so its SHA is still meaningful there; `_git_sha` is kept for it, with the same
+# stderr suppression applied.
 function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=nothing)
     open(joinpath(outdir, "provenance.toml"), "w") do io
-        println(io, "# consensus_macro run provenance (auto-written)")
+        println(io, "# FitRateEquation run provenance (auto-written)")
         println(io, "timestamp       = \"$(Libc.strftime("%Y-%m-%dT%H:%M:%S%z", time()))\"")
         println(io, "julia_version   = \"$(VERSION)\"")
-        println(io, "ppp_sha         = \"$(_git_sha(@__DIR__))\"")
+        println(io, "package_version = \"$(pkgversion(@__MODULE__))\"")
         println(io, "enzymerates_sha = \"$(_git_sha(pkgdir(EnzymeRates)))\"")
         println(io, "n_restarts      = $(meta.n_restarts)")
         println(io, "maxiter         = $(meta.maxiter)")
@@ -508,6 +523,62 @@ function _report_note(enzyme::Symbol, results)
         " in Mode 1 (the full-budget corpus reads ABOVE the 9–24 µM literature band); Mode 2\n",
         "> pins it to the literature 15 µM.\n")
     return ""
+end
+
+# =========================================================================================
+#                    Exported runners: run_g6pd / run_pgd / run_hk1
+# =========================================================================================
+#
+# Thin wrappers around `run_all` that pick the budget (smoke vs full), the default outdir,
+# and spin up workers via `setup_workers`. These are the library replacement for the old
+# per-enzyme launcher scripts (run_g6pd.jl / run_pgd.jl / run_hk1.jl).
+
+function _budget(smoke::Bool)
+    smoke ? (n_restarts=2, maxiter=150, maxtime=120.0) :
+            (n_restarts=48, maxiter=1000, maxtime=300.0)
+end
+
+function _default_outdir(enzyme::AbstractString, smoke::Bool)
+    joinpath(pwd(), "results", "$(enzyme)_" * Dates.format(Dates.today(), "yyyy-mm-dd") * (smoke ? "_smoke" : ""))
+end
+
+function _run_enzyme(cfg, enzyme::AbstractString; outdir=nothing, smoke::Bool=false, nprocs=nothing)
+    b = _budget(smoke)
+    od = isnothing(outdir) ? _default_outdir(enzyme, smoke) : outdir
+    setup_workers(nprocs)
+    @info "FitRateEquation run starting" enzyme nworkers=nworkers() smoke outdir=od
+    run_all(cfg; outdir=od, n_restarts=b.n_restarts, maxiter=b.maxiter, maxtime=b.maxtime)
+end
+
+"""
+    run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing)
+
+Run the deploy-variant × mode consensus macro-constant extraction for G6PD end-to-end and
+write the six artifacts (macro_constants.csv, goodness_of_fit.csv,
+identifiable_functions.csv, micro_parameters.jl, report.md, provenance.toml) to `outdir`
+(default: `./results/G6PD_<date>[_smoke]`). `smoke=true` uses a tiny fit budget for a fast
+sanity check. `nprocs` overrides the local worker-count default (see `setup_workers`); a
+SLURM allocation always overrides `nprocs`. Returns the `run_all` results.
+"""
+run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing) = _run_enzyme(g6pd_config(), "G6PD"; outdir, smoke, nprocs)
+
+"""
+    run_pgd(; outdir=nothing, smoke=false, nprocs=nothing)
+
+As `run_g6pd`, for PGD.
+"""
+run_pgd(;  outdir=nothing, smoke=false, nprocs=nothing) = _run_enzyme(pgd_config(),  "PGD";  outdir, smoke, nprocs)
+
+"""
+    run_hk1(; outdir=nothing, smoke=false, nprocs=nothing)
+
+As `run_g6pd`, for HK1. Errors clearly if HK1 wiring is unavailable on this EnzymeRates
+build (`FitRateEquation.HK1_AVAILABLE == false`; a deferred port — see AGENTS.md) rather
+than crashing deeper in the pipeline.
+"""
+function run_hk1(; outdir=nothing, smoke=false, nprocs=nothing)
+    HK1_AVAILABLE || error("HK1 is not available on this EnzymeRates build (deferred port). See AGENTS.md.")
+    _run_enzyme(hk1_config(), "HK1"; outdir, smoke, nprocs)
 end
 
 # Format the actual Mode-1 G6PD cross-term Ki_NADPH (value + class + CI) for the report note.

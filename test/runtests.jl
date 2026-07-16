@@ -23,6 +23,7 @@ using Test
     include("test_mode_agreement.jl")
     include("test_modes_cascade.jl")
     include("test_parallel_equivalence.jl")
+    include("test_runners.jl")
     # PGD
     include("test_cha_pgd_laws.jl")
     include("test_pgd_data.jl")

@@ -5,6 +5,8 @@ using LinearAlgebra, Statistics, Random
 using Distributed
 using ForwardDiff
 using CSV, DataFrames
+using Dates
+using Pkg, ClusterManagers
 
 # Vendored core (data loading, mechanism builder, gauge). bounds/loss/fit/structural
 # are NOT carried — the Cha path uses cha_coord_bounds / cha_centered_logratio_loss /
@@ -39,6 +41,7 @@ include("cha_fit.jl")
 include("cha_classify.jl")
 include("cha_deploy.jl")
 include("cha_koffq_report.jl")
+include("worker_setup.jl")
 include("run.jl")
 include("configs/G6PD.jl")
 include("configs/PGD.jl")
@@ -50,6 +53,8 @@ export macro_constants
 export mode_agreement
 export run_variant, run_all, write_outputs
 export g6pd_config, pgd_config, hk1_config
+export setup_workers
+export run_g6pd, run_pgd, run_hk1
 
 # plot_consensus_fit stub — the real method lives in the CairoMakie package extension.
 function plot_consensus_fit end
