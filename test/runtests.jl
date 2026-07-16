@@ -28,6 +28,7 @@ using Test
     include("test_pgd_data.jl")
     include("test_pgd_mechanisms.jl")
     include("test_pgd_outputs.jl")
+    include("test_pgd_macro_collect.jl")
     # HK1 (auto-skip while HK1_AVAILABLE is false)
     include("test_cha_hk1_laws.jl")
     include("test_hk1_deploy.jl")
