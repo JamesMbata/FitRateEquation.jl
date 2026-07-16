@@ -1,0 +1,28 @@
+name: CI
+on:
+  push: {branches: [main]}
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: ['1.11', '1.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with: {version: '${{ matrix.version }}'}
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1     # instantiate resolves EnzymeRates via [sources]
+      - uses: julia-actions/julia-runtest@v1
+
+  render:
+    runs-on: ubuntu-latest
+    continue-on-error: true     # CairoMakie render smoke; non-blocking, not part of the default test suite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with: {version: '1.12'}
+      - name: Render extension smoke
+        run: |
+          julia -e 'using Pkg; Pkg.activate(mktempdir()); Pkg.develop(path="."); Pkg.add("CairoMakie"); include("test/test_plot_render.jl")'
