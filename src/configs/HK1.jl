@@ -1,12 +1,13 @@
-# HK1 config for the FitRateEquation extractor. Paths are repo-root-relative (the
-# data loader reads data_csv relative to cwd, so run from repo root). The
-# runner and tests call hk1_config(). The Choe HK1 corpus is already in Molar, so
+# HK1 config for the FitRateEquation extractor. data_csv resolves to the
+# bundled corpus under the package's data/ directory via pkgdir, so it works
+# from any cwd; pass the data_csv keyword to point at a different corpus.
+# The runner and tests call hk1_config(). The Choe HK1 corpus is already in Molar, so
 # every metabolite declares unit :M (the loader divides by 1e6 only for :uM). The
 # phosphate law/mechanism symbol is :Pi but the CSV column is "Phosphate".
-function hk1_config()
+function hk1_config(; data_csv = joinpath(pkgdir(FitRateEquation), "data", "Choe_HK1_kinetic_data.csv"))
     (
         name = "HK1",
-        data_csv = "fitting/HK1/Choe_HK1_kinetic_data.csv",
+        data_csv = data_csv,
         rate_col = "Rate",
         article_col = "Article",
         fig_col = "Fig",

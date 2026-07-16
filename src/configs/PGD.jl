@@ -1,10 +1,11 @@
-# PGD config for the FitRateEquation extractor. Paths are repo-root-relative (the
-# data loader reads data_csv relative to cwd, so run from repo root). The
-# runner and tests call pgd_config().
-function pgd_config()
+# PGD config for the FitRateEquation extractor. data_csv resolves to the
+# bundled corpus under the package's data/ directory via pkgdir, so it works
+# from any cwd; pass the data_csv keyword to point at a different corpus.
+# The runner and tests call pgd_config().
+function pgd_config(; data_csv = joinpath(pkgdir(FitRateEquation), "data", "PGD_EnzymeData_with_CO2.csv"))
     (
         name = "PGD",
-        data_csv = "fitting/PGD/PGD_EnzymeData_with_CO2.csv",
+        data_csv = data_csv,
         rate_col = "Rate_V",
         article_col = "Article",
         fig_col = "Fig",
