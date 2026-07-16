@@ -108,9 +108,11 @@ end
 # Apparent_Keq). Column names/units come from the same config the fit used. `cfg.data_csv`
 # is already an absolute path (resolved via pkgdir(FitRateEquation) by the config
 # constructors), so -- unlike the source script -- no repo-root prefix is needed here.
-
-_to_float(x) = x === missing ? NaN :
-    (x isa AbstractString ? something(tryparse(Float64, x), NaN) : Float64(x))
+#
+# Reuses `_to_float` from core/data.jl (missing/blank/non-numeric -> `default`) rather than
+# redefining it: the source script's local `_to_float(x)` (default NaN) is exactly
+# `_to_float(x, NaN)` against the vendored version, so every call site below passes NaN
+# explicitly instead of relying on core/data.jl's own default (0.0).
 
 function build_plot_df(cfg)
     raw = CSV.read(cfg.data_csv, DataFrame)
@@ -119,14 +121,14 @@ function build_plot_df(cfg)
         "which the per-figure panel renderer requires. $(cfg.name) is not supported yet.")
     df = DataFrame()
     for (sym, (col, unit)) in cfg.metabolites
-        vals = _to_float.(raw[!, col])
+        vals = _to_float.(raw[!, col], NaN)
         vals[isnan.(vals)] .= 0.0                       # missing concentration -> absent (0)
         df[!, sym] = unit === :uM ? vals ./ 1e6 : vals
     end
-    df.Rate         = _to_float.(raw[!, cfg.rate_col])
+    df.Rate         = _to_float.(raw[!, cfg.rate_col], NaN)
     df.source       = string.(raw[!, cfg.article_col], "|", raw[!, cfg.fig_col])
     df.X_axis_label = string.(raw[!, "X_axis_label"])
-    df.Apparent_Keq = _to_float.(raw[!, cfg.keq_col])
+    df.Apparent_Keq = _to_float.(raw[!, cfg.keq_col], NaN)
     filter!(row -> isfinite(row.Rate) && row.Rate != 0.0, df)   # same drop as load_dataset
     return df
 end
