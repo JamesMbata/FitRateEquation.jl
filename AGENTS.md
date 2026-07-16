@@ -256,12 +256,13 @@ run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
   (ATP-free, via `run_g6pd_noatp`); PGD `:cha_base`; HK1 `:H1`, `:H4` (not runnable
   while guarded). `run_all(cfg; variants=[…], row_filter=…)` exposes a custom
   variant set / row filter directly for advanced use.
-- Configs (data CSV, `keq_reference`, metabolite columns/units) live in
+- Configs (data CSV, `deploy_keq`, metabolite columns/units) live in
   `src/configs/G6PD.jl`, `src/configs/PGD.jl`, `src/configs/HK1.jl`. The bundled
   corpora resolve via `pkgdir(FitRateEquation)` so they load correctly regardless
-  of installation location; `data_csv` overrides them. G6PD's bundled corpus uses
-  `keq_reference = 43.743` (pH 8.0); PGD's uses `keq_reference = 0.079` (pH-flat
-  Bi-Ter CO₂ aq).
+  of installation location; `data_csv` overrides them. The fit itself uses each
+  figure's own apparent Keq, read per-row from the corpus `keq_col` column; the
+  config's `deploy_keq` is the single readout/deploy value — G6PD `13.655` (apparent
+  Keq at cellular pH 7.2 / 37 °C), PGD `0.17` (pH-flat Bi-Ter CO₂ aq, 37 °C).
 
 **CLI** — a thin shim (`bin/fitrateequation`, `using FitRateEquation;
 cli_main(ARGS)`) dispatching the same runners in-process, no subprocess:
@@ -363,7 +364,7 @@ src/enzymes/g6pd.jl, src/enzymes/pgd.jl, src/enzymes/hk1.jl
                        per-enzyme topology + lit values + alias/ki-ratio maps (hk1.jl
                        guarded — see the EnzymeRates dependency note above)
 src/configs/G6PD.jl, src/configs/PGD.jl, src/configs/HK1.jl
-                       data CSV path (pkgdir-resolved), keq_reference, metabolite columns
+                       data CSV path (pkgdir-resolved), deploy_keq, metabolite columns
 src/enzyme_wiring.jl   EnzymeWiring registry struct + accessors + modes_for
 src/mechanisms.jl      generic dead-end / King-Altman builder helper
 
