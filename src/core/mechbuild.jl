@@ -8,6 +8,12 @@
 # composition from the step graph (`_form_compositions`) and emits call notation; the
 # terse opaque form names in enzymes/<enzyme>.jl are unchanged.
 
+# Per-row penalty for a predicted/observed rate-sign mismatch in the centered-log-ratio
+# loss. Vendored from the consensus_macro core/loss.jl const (the coeff-space
+# centered_logratio_loss it accompanied is superseded by ChaFit.cha_centered_logratio_loss
+# and was not carried, but this const is still consumed by the Cha loss and test_cha_fit.jl).
+const _SIGN_PENALTY = 10.0
+
 """
     _form_compositions(metset, steps) -> Dict{Symbol,Vector{Symbol}}
 
