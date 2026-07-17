@@ -160,7 +160,56 @@ your results folder. Plotting only works after `CairoMakie` has been loaded
 fitting, since it's a large dependency you only need if you want pictures.
 Plotting currently works for G6PD and PGD results only.
 
-## 8. Troubleshooting
+## 8. Command line
+
+If you'd rather run a fit from your terminal than from inside Julia,
+FitRateEquation.jl ships a small command-line interface. It does the same thing
+as the `run_*` functions above — it just takes its instructions as command-line
+arguments instead.
+
+The simplest way to reach it (works from any project where the package is
+installed) is:
+
+```sh
+julia --project -e 'using FitRateEquation; FitRateEquation.cli_main(ARGS)' -- g6pd --smoke
+```
+
+Everything after the `--` is passed to the tool. The subcommands are:
+
+| Subcommand | What it does |
+|---|---|
+| `g6pd` | Fit G6PD |
+| `pgd` | Fit PGD |
+| `g6pd-noatp` | Fit the ATP-free G6PD variant |
+| `hk1` | Fit HK1 *(not yet available — see Troubleshooting)* |
+| `plot <run_dir>` | Render the fitted law over the data for a finished run |
+| `help` | Print usage |
+
+And the flags:
+
+| Flag | What it does |
+|---|---|
+| `--smoke` | Use the fast, low-budget fit (same as `smoke=true`) |
+| `--nprocs N` | Use `N` worker processes for the fit |
+| `--outdir DIR` | Write the run's six output files into `DIR` |
+| `--data CSV` | Fit your own CSV instead of the built-in corpus (only with `g6pd-noatp`) |
+
+For example, to fit PGD at full budget and put the results in a folder called
+`pgd_run`:
+
+```sh
+julia --project -e 'using FitRateEquation; FitRateEquation.cli_main(ARGS)' -- pgd --outdir pgd_run
+```
+
+The package also includes a ready-made launcher script at
+`bin/fitrateequation` that wraps the line above, so if you have the package
+checked out you can run it directly:
+
+```sh
+julia --project bin/fitrateequation g6pd --smoke
+```
+
+## 9. Troubleshooting
 
 **`Pkg.add(url=...)` for FitRateEquation.jl fails, or complains it can't find
 EnzymeRates:** make sure you ran the EnzymeRates.jl `Pkg.add(url=...)`
@@ -177,7 +226,7 @@ your terminal to check, and download a newer release from
 available in this release (the underlying mechanism hasn't been ported over
 yet). `run_g6pd`, `run_pgd`, and `run_g6pd_noatp` are fully available.
 
-## 9. Going deeper
+## 10. Going deeper
 
 This README covers everyday use. For the full model details — the exact rate
 equation being fit, what's held fixed versus what's fit from data, the
