@@ -35,9 +35,27 @@ function _check(runner, fixture_path)
     end
 end
 
+# The fixtures are a fixed-seed smoke artifact generated on Julia 1.12. Bit-level fit
+# reproducibility is NOT guaranteed across Julia MINOR versions -- different LLVM / libm /
+# codegen shift the last bits of the seeded CMA-ES trajectory, so the fitted `value`s differ
+# on e.g. 1.11 even though the fit is fully deterministic within a version. The determinism
+# contract this gate protects is worker-count / budget invariance, not cross-version identity.
+# So the exact-value gate runs only on the fixtures' Julia series; other versions still run the
+# whole rest of the suite (the 1.11 compat floor), just not this exact-reproduction check.
+const _FIXTURES_JULIA_SERIES = v"1.12"
+_on_fixture_julia() = _FIXTURES_JULIA_SERIES <= VERSION < v"1.13"
+
 @testset "byte-identity: G6PD smoke" begin
-    _check(run_g6pd, joinpath(@__DIR__, "fixtures", "g6pd_smoke_macro_constants.csv"))
+    if _on_fixture_julia()
+        _check(run_g6pd, joinpath(@__DIR__, "fixtures", "g6pd_smoke_macro_constants.csv"))
+    else
+        @test_skip "byte-identity fixtures are Julia $(_FIXTURES_JULIA_SERIES)-specific; skipped on $(VERSION)"
+    end
 end
 @testset "byte-identity: PGD smoke" begin
-    _check(run_pgd, joinpath(@__DIR__, "fixtures", "pgd_smoke_macro_constants.csv"))
+    if _on_fixture_julia()
+        _check(run_pgd, joinpath(@__DIR__, "fixtures", "pgd_smoke_macro_constants.csv"))
+    else
+        @test_skip "byte-identity fixtures are Julia $(_FIXTURES_JULIA_SERIES)-specific; skipped on $(VERSION)"
+    end
 end
