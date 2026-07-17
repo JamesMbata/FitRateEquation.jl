@@ -27,7 +27,7 @@ CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 FitRateEquationMakieExt = "CairoMakie"
 
 [sources]
-EnzymeRates = {url = "https://github.com/JamesMbata/EnzymeRates.jl", rev = "642352f227850b3417027856b9e07dba97bc1f72"}
+EnzymeRates = {url = "https://github.com/DenisTitovLab/EnzymeRates.jl", rev = "642352f227850b3417027856b9e07dba97bc1f72"}
 
 [compat]
 julia = "1.11"

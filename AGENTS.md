@@ -20,7 +20,7 @@ identifiable from the data; see `docs/G6PD_session_context.md` and
 `docs/PGD_session_context.md` in the sibling `PPP_Experiments` repo).
 
 > **EnzymeRates dependency:** this package runs on **upstream EnzymeRates**
-> (`JamesMbata/EnzymeRates.jl`, pinned in `Project.toml`'s `[sources]` for
+> (`DenisTitovLab/EnzymeRates.jl`, pinned in `Project.toml`'s `[sources]` for
 > dev/CI; a downstream consumer installs it separately by URL — see `README.md`
 > §3). It is self-contained — it vendors the data loader / mechanism builder /
 > gauge helpers under `src/core/` (formerly borrowed from `fitting/mechanism_id/`).

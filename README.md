@@ -48,7 +48,7 @@ Run the following two commands at the `julia>` prompt:
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/JamesMbata/EnzymeRates.jl")
+Pkg.add(url="https://github.com/DenisTitovLab/EnzymeRates.jl")
 Pkg.add(url="https://github.com/JamesMbata/FitRateEquation.jl")
 ```
 
