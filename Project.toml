@@ -1,6 +1,6 @@
 name = "FitRateEquation"
 uuid = "737bd8f2-0166-41f4-a907-b8b3dd7452d9"
-authors = ["James Mbata"]
+authors = ["James Mbata", "Denis Titov Lab"]
 version = "0.1.0"
 
 [deps]
