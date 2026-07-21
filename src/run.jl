@@ -37,6 +37,28 @@ end
 run_variants(enzyme::Symbol) =
     enzyme === :HK1 ? [:H1, :H4] : [deploy_variant(enzyme)]
 
+# G6PD dead-end-dropped ablation variants (src/enzymes/g6pd.jl) for which
+# `anchor_reverse=false` is now a supported default, not a diagnostic: fit on the smaller,
+# more-physiological "mydata" corpus (134 rows), `no_g6p_atp_deadend` jointly data-identifies
+# BOTH Km_NADPH_rev and Ki_NADPH without the anchor (2026-07-21) -- the deployed law
+# (`SS_NADPH_release_rate_eq`) and the raw conflating `RE_rate_eq` do NOT show this on the
+# full 565-row historical corpus (Ki_NADPH stays unconstrained), so the anchor requirement is
+# unchanged for those. This has not been confirmed on the full corpus, so the exemption stays
+# scoped to exactly these three variants -- see AGENTS.md for the corpus caveat.
+const _G6PD_ANCHOR_OPTIONAL_VARIANTS = (:no_g6p_nadph_deadend, :no_g6p_atp_deadend,
+                                        :no_g6p_both_deadends)
+
+# Whether `variant` still REQUIRES the reverse anchor for deployability (the deployed law and
+# the raw conflating RE law, for G6PD; always true for PGD/HK1, which have no such anchor).
+_requires_reverse_anchor(enzyme::Symbol, variant::Symbol) =
+    !(enzyme === :G6PD && variant in _G6PD_ANCHOR_OPTIONAL_VARIANTS)
+
+# Default `anchor_reverse` for a `run_all` call: false only when EVERY variant being fit is one
+# of the anchor-optional ablation variants; true otherwise (unchanged default everywhere else,
+# including any call that mixes an ablation variant with the deploy variant).
+_default_anchor_reverse(enzyme::Symbol, variants::AbstractVector{Symbol}) =
+    !(enzyme === :G6PD && !isempty(variants) && all(v -> v in _G6PD_ANCHOR_OPTIONAL_VARIANTS, variants))
+
 function _mech_for(enzyme::Symbol, variant::Symbol)
     for x in consensus_variants(enzyme)
         Symbol(x.name) === variant && return x.mech
@@ -225,13 +247,17 @@ end
  `n_cells × (1 + n_articles)` independent fits are dispatched via `pmap` over a
  `CachingPool` (a 1-process pool is the serial path); `pmap` order preservation + the
  identity-derived per-cell seed make the reduced output byte-identical at any worker count.
- `anchor_reverse` (default `true`) is a G6PD-only diagnostic switch — see `run_g6pd`; setting
- it `false` (typically with `variants=[:RE_rate_eq]`) reproduces the conflating full-RE fit and
- marks the run NOT DEPLOYABLE. It is a no-op for PGD/HK1 (no always-on reverse anchor)."
+ `anchor_reverse` is a G6PD-only switch — see `run_g6pd`; its default is variant-aware
+ (`_default_anchor_reverse`): `false` when every variant in `variants` is one of the
+ anchor-optional ablations (`_G6PD_ANCHOR_OPTIONAL_VARIANTS`), `true` otherwise. Explicitly
+ passing `false` for a variant that still requires the anchor (the deploy variant,
+ `:RE_rate_eq`) reproduces the conflating fit and marks that variant's output NOT DEPLOYABLE.
+ No-op for PGD/HK1 (no always-on reverse anchor)."
 function run_all(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_000_000,
                  maxtime::Real=20.0, seed::Int=1,
                  variants::Vector{Symbol}=run_variants(Symbol(cfg.name)),
-                 row_filter=identity, anchor_reverse::Bool=true)
+                 row_filter=identity,
+                 anchor_reverse::Bool=_default_anchor_reverse(Symbol(cfg.name), variants))
     enzyme = Symbol(cfg.name)
     d = row_filter(load_dataset(cfg))
     deploy_keq = cfg.deploy_keq
@@ -386,22 +412,22 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
     # for the deploy variant (the only variant the pipeline now runs), one `{variant}_{mode}_{sym}`
     # line per free param. Guarded so a deploy failure never aborts write_outputs.
     open(joinpath(outdir, "micro_parameters.jl"), "w") do io
-        if !anchor_reverse
-            # Guardrail: an anchor_reverse=false fit leaves Km_NADPH_rev unanchored, so the
-            # forward Ki_NADPH is non-identifiable (railed). Such a fit is a conflation/
-            # identifiability DIAGNOSTIC and must never be deployed — flag it unmissably.
-            println(io, "# ##########################################################################")
-            println(io, "# NOT DEPLOYABLE — conflated diagnostic fit (anchor_reverse=false).")
-            println(io, "# Km_NADPH_rev was left UNANCHORED, so the forward Ki_NADPH is")
-            println(io, "# non-identifiable (railed). Do NOT wire these constants into the ODE.")
-            println(io, "# ##########################################################################")
-        end
         println(io, "# Consensus $(name) micro parameters (one point on a flat manifold;")
         println(io, "# only the macro constants labeled data_identified are determined).")
         println(io, "# DEPLOY block: closed-form ChaDeploy.cha_deploy_micro of the fitted Cha")
         println(io, "# macro coords (the promoted Cha law's micro representative). The pure-RE")
         println(io, "# variant is this law's release-rate->infinity limit (not emitted separately).")
         for res in results
+            # Per-variant guardrail: an identifiability failure, not a parsimony trade-off --
+            # dropping the anchor doesn't simplify THIS variant's mechanism, it leaves Ki_NADPH
+            # railed at the same parameter count. Only fires for variants that still require the
+            # anchor (_requires_reverse_anchor) -- never for the anchor-optional ablations.
+            if !anchor_reverse && _requires_reverse_anchor(enzyme, res.variant)
+                println(io, "# ##########################################################################")
+                println(io, "# NOT DEPLOYABLE [$(res.variant) $(res.mode)] — Ki_NADPH is structurally")
+                println(io, "# undetermined without this anchor (railed). Do NOT wire into the ODE.")
+                println(io, "# ##########################################################################")
+            end
             logθ = nothing
             try
                 logθ = ChaDeploy.cha_deploy_micro(enzyme, res.r.mech, res.r.fit.coords; keq=keq,
@@ -422,14 +448,17 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
     # report.md (variant × mode tables + Mode1<->Mode2 agreement + enzyme-specific blocks)
     open(joinpath(outdir, "report.md"), "w") do io
         println(io, "# Consensus macro-constant extraction ($(name))\n")
-        if !anchor_reverse
-            println(io, "> **⚠ CONFLATED DIAGNOSTIC RUN (`anchor_reverse=false`).** `Km_NADPH_rev` was ",
-                        "left unanchored in all modes, deliberately reintroducing the forward/reverse ",
-                        "`Ki_NADPH` conflation. The forward `Ki_NADPH` is non-identifiable here and the ",
-                        "`micro_parameters.jl` block is **not deployable**. Compare fit quality only.\n")
-        end
         for res in results
             println(io, "## $(res.variant) — $(res.mode)\n")
+            # Per-variant: only the variants that still require the anchor get flagged (the
+            # anchor-optional ablations run anchor-off as a supported default, not a diagnostic).
+            if !anchor_reverse && _requires_reverse_anchor(enzyme, res.variant)
+                println(io, "> **⚠ NOT DEPLOYABLE (`anchor_reverse=false`).** `Km_NADPH_rev` was left ",
+                            "unanchored, so the forward `Ki_NADPH` is non-identifiable (railed) here ",
+                            "— an identifiability failure, not a parsimony trade-off (same parameter ",
+                            "count, just an undetermined value). This variant's `micro_parameters.jl` ",
+                            "block is **not deployable**. Compare fit quality only.\n")
+            end
             println(io, "CV (leave-one-article-out): $(res.r.cv.mean_cv) ± $(res.r.cv.se)\n")
             println(io, "| macro | value | class | ci |\n|---|---|---|---|")
             for m in res.classed

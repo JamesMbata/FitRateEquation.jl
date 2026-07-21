@@ -50,6 +50,30 @@ using Test
     @test occursin("cha_deploy_micro", mp)
 end
 
+@testset "anchor_reverse: variant-aware default + per-variant NOT DEPLOYABLE banner" begin
+    # Ablation variant: default anchor_reverse is now false, and its output carries no banner.
+    outdir1 = mktempdir()
+    run_all(g6pd_config(); outdir=outdir1, variants=[:no_g6p_atp_deadend],
+            n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
+    @test occursin("anchor_reverse  = false", read(joinpath(outdir1, "provenance.toml"), String))
+    @test !occursin("NOT DEPLOYABLE", read(joinpath(outdir1, "micro_parameters.jl"), String))
+    @test !occursin("NOT DEPLOYABLE", read(joinpath(outdir1, "report.md"), String))
+
+    # Deploy variant: default anchor_reverse is unaffected (still true), no banner.
+    outdir2 = mktempdir()
+    run_all(g6pd_config(); outdir=outdir2, n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
+    @test occursin("anchor_reverse  = true", read(joinpath(outdir2, "provenance.toml"), String))
+    @test !occursin("NOT DEPLOYABLE", read(joinpath(outdir2, "micro_parameters.jl"), String))
+
+    # Forcing anchor_reverse=false on the deploy variant (which still requires it) still bans
+    # deployment -- the banner is scoped per-variant, not removed globally.
+    outdir3 = mktempdir()
+    run_all(g6pd_config(); outdir=outdir3, n_restarts=2, maxiter=150, maxtime=5.0, seed=1,
+            anchor_reverse=false)
+    @test occursin("NOT DEPLOYABLE", read(joinpath(outdir3, "micro_parameters.jl"), String))
+    @test occursin("NOT DEPLOYABLE", read(joinpath(outdir3, "report.md"), String))
+end
+
 @testset "provenance records deploy_keq" begin
     d    = FitRateEquation.load_dataset(g6pd_config())
     meta = (n_restarts=1, maxiter=100, maxtime=1.0, seed=1,
