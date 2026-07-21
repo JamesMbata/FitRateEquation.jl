@@ -197,6 +197,15 @@ pin (it is a derived constant, not a coord).
 - **Mode 3** (PGD only) — the explicit `Km_PGA` **hard override** (38 µM) realized as
   a high-weight (100) apparent-Km anchor.
 
+**`anchor_reverse` (G6PD diagnostic switch, default `true`).** `run_all`/`run_g6pd`
+accept `anchor_reverse`; when `false`, `resolve_cha_pins` drops the all-modes
+`Km_NADPH_rev` anchor, deliberately reintroducing the forward/reverse `Ki_NADPH`
+conflation (forward `Ki_NADPH` becomes non-identifiable). **The deployed law requires
+`anchor_reverse=true`.** `false` is a conflation/identifiability DIAGNOSTIC only —
+typically paired with `variants=[:RE_rate_eq]` to reproduce the original full-RE
+conflating fit; the run is tagged `NOT DEPLOYABLE` in `micro_parameters.jl`/`report.md`
+and the anchor state + variants are recorded in `provenance.toml`. No-op for PGD/HK1.
+
 Pinned constants are tagged `:literature_pinned` **structurally** (a coordinate that
 has a pin), never from profile curvature. `report.md` surfaces a **mode-agreement
 check** on the forward shape constants: if a "pinned" constant was not actually flat
@@ -213,6 +222,22 @@ status until they are themselves re-derived. The first law to adopt the conventi
 is the ATP-free G6PD variant (`:no_atp`, `src/enzymes/g6pd.jl`): with the ATP
 dead-ends dropped entirely, its mode1 free fit is fully data-identified, so mode1 is
 its deploy candidate and mode2 (`Ki_NADPH` literature pin only) is diagnostics-only.
+
+**Dead-end-dropped ablation variants (2026-07-20):** three further exact `Ki -> Inf`
+limits of the deployed law, each dropping one or both of the two abortive-ternary
+G6P-cross-term dead ends (`src/enzymes/g6pd.jl`): `:no_g6p_nadph_deadend` (drops
+`E·G6P·NADPH`, `Ki_NADPH -> Inf`, fit with `anchor_reverse=false`),
+`:no_g6p_atp_deadend` (drops `E·G6P·ATP`, `Ki_ATP_EG -> Inf`, fit with
+`anchor_reverse=true`), `:no_g6p_both_deadends` (drops both). Model-selection
+verdict (`results/G6PD_deadend_variants_report.md`): `:no_g6p_atp_deadend` is a
+clean parsimony win (forward constants unchanged, CV improves an order of
+magnitude in mode2) — `Ki_ATP_EG` was an unconstrained nuisance dimension with zero
+forward-fit benefit, consistent with its ~30 mM literature Ki (Ninfali 1996,
+superphysiological). The NADPH-dead-end drops are NOT recommended: `alpha` loses
+`data_identified` status and LOAO CV degrades or destabilizes — the bare-`[NADPH]`
+reverse-release channel does not cleanly substitute for the dedicated forward
+cross-term. None of the three has been deployed; only `:no_g6p_atp_deadend` is a
+plausible future deploy candidate, pending the coupled-oxidative-flux check.
 
 ## Running
 
@@ -253,9 +278,13 @@ run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
   run_all(cfg; outdir="my_results", n_restarts=48, maxiter=1000)
   ```
 - **Fit variants per enzyme:** G6PD `:SS_NADPH_release_rate_eq` (deploy) + `:no_atp`
-  (ATP-free, via `run_g6pd_noatp`); PGD `:cha_base`; HK1 `:H1`, `:H4` (not runnable
-  while guarded). `run_all(cfg; variants=[…], row_filter=…)` exposes a custom
-  variant set / row filter directly for advanced use.
+  (ATP-free, via `run_g6pd_noatp`) + the dead-end-dropped ablations
+  `:no_g6p_nadph_deadend`, `:no_g6p_atp_deadend`, `:no_g6p_both_deadends` (no
+  dedicated runners — direct `run_all(cfg; variants=[…], anchor_reverse=…)`, no
+  row filter needed since ATP stays a metabolite in all three); PGD `:cha_base`;
+  HK1 `:H1`, `:H4` (not runnable while guarded). `run_all(cfg; variants=[…],
+  row_filter=…)` exposes a custom variant set / row filter directly for advanced
+  use.
 - Configs (data CSV, `deploy_keq`, metabolite columns/units) live in
   `src/configs/G6PD.jl`, `src/configs/PGD.jl`, `src/configs/HK1.jl`. The bundled
   corpora resolve via `pkgdir(FitRateEquation)` so they load correctly regardless

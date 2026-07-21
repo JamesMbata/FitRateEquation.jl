@@ -34,3 +34,45 @@ end
     @test haskey(FitRateEquation.ChaFit.resolve_cha_pins(:PGD, :cha_base, :mode2), :Ki_ATP)
     @test !haskey(FitRateEquation.ChaFit.resolve_cha_pins(:PGD, :cha_base, :mode1), :Ki_ATP)
 end
+
+@testset "anchor_reverse=false frees the G6PD Km_NADPH_rev anchor (all modes)" begin
+    rp = FitRateEquation.ChaFit.resolve_cha_pins
+    # DEFAULT (anchor_reverse=true): the reverse channel is anchored in EVERY mode, and Mode 1
+    # pins ONLY that anchor. This is the deployed-law de-conflation contract — must be unchanged.
+    for variant in (:RE_rate_eq, :SS_NADPH_release_rate_eq)
+        @test Set(keys(rp(:G6PD, variant, :mode1))) == Set([:Km_NADPH_rev])
+        @test Set(keys(rp(:G6PD, variant, :mode2))) == Set([:Km_NADPH_rev, :Ki_ATP, :Ki_NADPH])
+        # anchor_reverse=false: Km_NADPH_rev is left FREE → the conflation returns.
+        @test isempty(rp(:G6PD, variant, :mode1; anchor_reverse=false))
+        @test Set(keys(rp(:G6PD, variant, :mode2; anchor_reverse=false))) == Set([:Ki_ATP, :Ki_NADPH])
+    end
+    # The ATP-free variant carries the same reverse anchor and responds to the flag identically.
+    @test Set(keys(rp(:G6PD, :no_atp, :mode1))) == Set([:Km_NADPH_rev])
+    @test isempty(rp(:G6PD, :no_atp, :mode1; anchor_reverse=false))
+    @test !haskey(rp(:G6PD, :no_atp, :mode2; anchor_reverse=false), :Km_NADPH_rev)
+
+    # The 3 dead-end-dropped variants carry the same all-modes reverse anchor and respond to
+    # the flag identically; each also auto-skips pinning whichever Ki it structurally lacks
+    # (:no_g6p_nadph_deadend has no :Ki_NADPH coord, :no_g6p_atp_deadend/:no_g6p_both_deadends
+    # have no :Ki_ATP_EG coord — Ki_ATP_EG is never a literature pin target regardless).
+    for (variant, has_nadph, has_atp) in [
+        (:no_g6p_nadph_deadend, false, true),
+        (:no_g6p_atp_deadend,   true,  true),
+        (:no_g6p_both_deadends, false, true),
+    ]
+        @test Set(keys(rp(:G6PD, variant, :mode1))) == Set([:Km_NADPH_rev])
+        @test isempty(rp(:G6PD, variant, :mode1; anchor_reverse=false))
+        m2 = rp(:G6PD, variant, :mode2)
+        @test (:Ki_NADPH in keys(m2)) == has_nadph
+        @test (:Ki_ATP in keys(m2))   == has_atp
+        @test :Ki_ATP_EG ∉ keys(m2)
+        @test !haskey(rp(:G6PD, variant, :mode2; anchor_reverse=false), :Km_NADPH_rev)
+    end
+
+    # PGD/HK1 have no always-on reverse anchor, so the flag is a no-op for them.
+    pairs = [(:PGD, :cha_base, :mode1), (:PGD, :cha_base, :mode2)]
+    FitRateEquation.HK1_AVAILABLE && append!(pairs, [(:HK1, :H1, :mode2), (:HK1, :H1, :mode3)])
+    for (enz, variant, mode) in pairs
+        @test rp(enz, variant, mode; anchor_reverse=false) == rp(enz, variant, mode)
+    end
+end

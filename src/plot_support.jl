@@ -26,7 +26,9 @@ end
 # `fitting/<ENZYME>/` path convention), so detect the enzyme from the run's own
 # macro_constants.csv `variant` column; fall back to the legacy path layout.
 const _VARIANT_TO_ENZYME = Dict(
-    "SS_NADPH_release_rate_eq" => :G6PD, "no_atp" => :G6PD,
+    "SS_NADPH_release_rate_eq" => :G6PD, "RE_rate_eq" => :G6PD, "no_atp" => :G6PD,
+    "no_g6p_nadph_deadend" => :G6PD, "no_g6p_atp_deadend" => :G6PD,
+    "no_g6p_both_deadends" => :G6PD,
     "cha_base" => :PGD,
     "H1" => :HK1, "H4" => :HK1,
 )

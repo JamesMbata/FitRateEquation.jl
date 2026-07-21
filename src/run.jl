@@ -67,9 +67,10 @@ end
 # pmap path threads the same pins/anchors per cell.)
 function _fit_and_cv(variant::Symbol, mech, d::Dataset;
                      mode::Symbol=:mode2, n_restarts::Int=8, maxiter::Int=1_000_000,
-                     maxtime::Real=20.0, seed::Int=1, enzyme::Symbol=_enzyme_of(mech))
+                     maxtime::Real=20.0, seed::Int=1, enzyme::Symbol=_enzyme_of(mech),
+                     anchor_reverse::Bool=true)
     keq     = enzyme === :HK1 ? median(d.keq) : nothing
-    pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode)
+    pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse)
     anchors = cha_anchors(enzyme, mode)
     fit = ChaFit.cha_fit_candidate(enzyme, mech, d; n_restarts=n_restarts, maxiter=maxiter,
                                    maxtime=maxtime, seed=seed, keq=keq, pins=pins,
@@ -149,12 +150,12 @@ end
 # function of cell identity (`seed + ci`) — exactly the `_fit_and_cv` scheme, where the main
 # fit and every fold of a cell share that one seed — so it is independent of worker count and
 # dispatch order.
-function _build_tasks(cells, d::Dataset; seed::Int=1, enzyme::Symbol=:G6PD)
+function _build_tasks(cells, d::Dataset; seed::Int=1, enzyme::Symbol=:G6PD, anchor_reverse::Bool=true)
     folds = _article_folds(d)
     allrows = collect(1:nrows(d))
     tasks = NamedTuple[]
     for (ci, (variant, mech, mode)) in enumerate(cells)
-        pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode)
+        pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse)
         anchors = cha_anchors(enzyme, mode)
         s = seed + ci
         push!(tasks, (ci=ci, variant=variant, mode=mode, kind=:main, article="",
@@ -193,11 +194,12 @@ end
 # cell's `r` NamedTuple (`per_article`, `mean_cv`, `se` reproduce `_cha_loocv` exactly, same
 # isempty NaN/0.0 guards), then run the cheap macro-coord identifiability + classification
 # serially. Cells are emitted in `ci` order so `write_outputs` is untouched.
-function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbol=:G6PD)
+function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbol=:G6PD,
+                       anchor_reverse::Bool=true)
     keq = median(d.keq)
     results = NamedTuple[]
     for (ci, (variant, mech, mode)) in enumerate(cells)
-        pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode)
+        pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse)
         anchors = cha_anchors(enzyme, mode)
         mres = raw[findfirst(x -> x.ci == ci && x.kind === :main, raw)]
         fit  = mres.fit
@@ -222,11 +224,14 @@ end
 "Run the deploy variant × per-enzyme modes end-to-end and write all artifacts. The
  `n_cells × (1 + n_articles)` independent fits are dispatched via `pmap` over a
  `CachingPool` (a 1-process pool is the serial path); `pmap` order preservation + the
- identity-derived per-cell seed make the reduced output byte-identical at any worker count."
+ identity-derived per-cell seed make the reduced output byte-identical at any worker count.
+ `anchor_reverse` (default `true`) is a G6PD-only diagnostic switch — see `run_g6pd`; setting
+ it `false` (typically with `variants=[:RE_rate_eq]`) reproduces the conflating full-RE fit and
+ marks the run NOT DEPLOYABLE. It is a no-op for PGD/HK1 (no always-on reverse anchor)."
 function run_all(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_000_000,
                  maxtime::Real=20.0, seed::Int=1,
                  variants::Vector{Symbol}=run_variants(Symbol(cfg.name)),
-                 row_filter=identity)
+                 row_filter=identity, anchor_reverse::Bool=true)
     enzyme = Symbol(cfg.name)
     d = row_filter(load_dataset(cfg))
     deploy_keq = cfg.deploy_keq
@@ -234,18 +239,19 @@ function run_all(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_
     cells = _cells(enzyme; variants=variants)
     mechs = Dict(v => _mech_for(enzyme, v) for v in variants)
 
-    tasks = _build_tasks(cells, d; seed=seed, enzyme=enzyme)
+    tasks = _build_tasks(cells, d; seed=seed, enzyme=enzyme, anchor_reverse=anchor_reverse)
     pool  = CachingPool(workers())
     raw   = pmap(pool, tasks) do t           # captures d, mechs, enzyme (cached per worker)
         _run_fit_task(t, d, mechs; n_restarts=n_restarts, maxiter=maxiter, maxtime=maxtime,
                       enzyme=enzyme)
     end
 
-    results = _reduce_cells(raw, cells, d, mechs; seed=seed, enzyme=enzyme)
+    results = _reduce_cells(raw, cells, d, mechs; seed=seed, enzyme=enzyme,
+                            anchor_reverse=anchor_reverse)
     meta = (n_restarts=n_restarts, maxiter=maxiter, maxtime=maxtime, seed=seed,
-            n_rows=nrows(d))
+            n_rows=nrows(d), anchor_reverse=anchor_reverse, variants=variants)
     write_outputs(outdir, d, results; meta=meta, name=String(cfg.name), enzyme=enzyme,
-                 deploy_keq=deploy_keq)
+                 deploy_keq=deploy_keq, anchor_reverse=anchor_reverse)
     results
 end
 
@@ -288,6 +294,12 @@ function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=noth
         println(io, "seed            = $(meta.seed)")
         println(io, "n_rows          = $(meta.n_rows)")
         deploy_keq === nothing || println(io, "deploy_keq      = $(deploy_keq)")
+        # Self-describing run: record the reverse-anchor state and the fitted variant(s) so a
+        # conflated (anchor_reverse=false) diagnostic run dir is never mistaken for a deploy run.
+        hasproperty(meta, :anchor_reverse) &&
+            println(io, "anchor_reverse  = $(meta.anchor_reverse)")
+        hasproperty(meta, :variants) &&
+            println(io, "variants        = $(collect(String.(meta.variants)))")
         println(io, "smoke           = $(meta.maxiter <= 150)")
     end
 end
@@ -334,7 +346,8 @@ function _hk1_h4_derived_rows(enzyme::Symbol, variant::Symbol, coords::AbstractD
 end
 
 function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G6PD",
-                       enzyme::Symbol=:G6PD, deploy_keq::Real=median(d.keq))
+                       enzyme::Symbol=:G6PD, deploy_keq::Real=median(d.keq),
+                       anchor_reverse::Bool=true)
     meta === nothing || _write_provenance(outdir, d, meta; deploy_keq=deploy_keq)
     keq = deploy_keq
     # macro_constants.csv (keyed by variant × mode): the classed cha_coords PLUS the derived
@@ -373,6 +386,16 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
     # for the deploy variant (the only variant the pipeline now runs), one `{variant}_{mode}_{sym}`
     # line per free param. Guarded so a deploy failure never aborts write_outputs.
     open(joinpath(outdir, "micro_parameters.jl"), "w") do io
+        if !anchor_reverse
+            # Guardrail: an anchor_reverse=false fit leaves Km_NADPH_rev unanchored, so the
+            # forward Ki_NADPH is non-identifiable (railed). Such a fit is a conflation/
+            # identifiability DIAGNOSTIC and must never be deployed — flag it unmissably.
+            println(io, "# ##########################################################################")
+            println(io, "# NOT DEPLOYABLE — conflated diagnostic fit (anchor_reverse=false).")
+            println(io, "# Km_NADPH_rev was left UNANCHORED, so the forward Ki_NADPH is")
+            println(io, "# non-identifiable (railed). Do NOT wire these constants into the ODE.")
+            println(io, "# ##########################################################################")
+        end
         println(io, "# Consensus $(name) micro parameters (one point on a flat manifold;")
         println(io, "# only the macro constants labeled data_identified are determined).")
         println(io, "# DEPLOY block: closed-form ChaDeploy.cha_deploy_micro of the fitted Cha")
@@ -399,6 +422,12 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
     # report.md (variant × mode tables + Mode1<->Mode2 agreement + enzyme-specific blocks)
     open(joinpath(outdir, "report.md"), "w") do io
         println(io, "# Consensus macro-constant extraction ($(name))\n")
+        if !anchor_reverse
+            println(io, "> **⚠ CONFLATED DIAGNOSTIC RUN (`anchor_reverse=false`).** `Km_NADPH_rev` was ",
+                        "left unanchored in all modes, deliberately reintroducing the forward/reverse ",
+                        "`Ki_NADPH` conflation. The forward `Ki_NADPH` is non-identifiable here and the ",
+                        "`micro_parameters.jl` block is **not deployable**. Compare fit quality only.\n")
+        end
         for res in results
             println(io, "## $(res.variant) — $(res.mode)\n")
             println(io, "CV (leave-one-article-out): $(res.r.cv.mean_cv) ± $(res.r.cv.se)\n")
@@ -440,7 +469,7 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
             end
         end
         # Enzyme-specific resolved-decision blocks.
-        enzyme === :G6PD && _write_g6pd_koffq_block(io, results, d, keq)
+        enzyme === :G6PD && _write_g6pd_koffq_block(io, results, d, keq; anchor_reverse=anchor_reverse)
         enzyme === :PGD  && _write_pgd_km_pga_block(io, results)
         print(io, _report_note(enzyme, results))
     end
@@ -450,14 +479,15 @@ end
 # report the (weak, wide-CI) data-identified koffQ from the reverse-weighted diagnostic, with
 # the deploy<->data gap and the honest caveat. Guarded so a report-only refit failure never
 # aborts write_outputs.
-function _write_g6pd_koffq_block(io, results, d, keq)
+function _write_g6pd_koffq_block(io, results, d, keq; anchor_reverse::Bool=true)
     println(io, "## G6PD koffQ hybrid (promoted NADPH-release fiber)\n")
     idx = findfirst(r -> r.variant === deploy_variant(:G6PD), results)
     res = results[idx === nothing ? 1 : idx]
     rvariant = res.variant
     try
         hr = ChaKoffqReport.koffq_hybrid_report(res.r.mech, d; keq=keq,
-                                                variant=rvariant, koffQ_deploy=1.0e3)
+                                                variant=rvariant, koffQ_deploy=1.0e3,
+                                                anchor_reverse=anchor_reverse)
         println(io, "| quantity | value |\n|---|---|")
         println(io, "| deploy koffQ (swept) | $(hr.deploy_value) |")
         println(io, "| data-identified koffQ | $(hr.data_identified_value) |")
@@ -543,22 +573,23 @@ function _default_outdir(enzyme::AbstractString, smoke::Bool)
 end
 
 function _run_enzyme(cfg, enzyme::AbstractString; outdir=nothing, smoke::Bool=false, nprocs=nothing,
-                     variants=nothing, row_filter=nothing)
+                     variants=nothing, row_filter=nothing, anchor_reverse::Bool=true)
     b = _budget(smoke)
     od = isnothing(outdir) ? _default_outdir(enzyme, smoke) : outdir
     setup_workers(nprocs)
-    @info "FitRateEquation run starting" enzyme nworkers=nworkers() smoke outdir=od
+    @info "FitRateEquation run starting" enzyme nworkers=nworkers() smoke outdir=od anchor_reverse
     # `variants`/`row_filter` are forwarded to `run_all` only when the caller supplies them
     # (e.g. `run_g6pd_noatp`'s :no_atp variant + ATP-row filter), so the plain per-enzyme
     # runners (run_g6pd/run_pgd/run_hk1) keep run_all's own defaults untouched.
     extra = NamedTuple()
     variants   === nothing || (extra = merge(extra, (variants=variants,)))
     row_filter === nothing || (extra = merge(extra, (row_filter=row_filter,)))
-    run_all(cfg; outdir=od, n_restarts=b.n_restarts, maxiter=b.maxiter, maxtime=b.maxtime, extra...)
+    run_all(cfg; outdir=od, n_restarts=b.n_restarts, maxiter=b.maxiter, maxtime=b.maxtime,
+            anchor_reverse=anchor_reverse, extra...)
 end
 
 """
-    run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing)
+    run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true)
 
 Run the deploy-variant × mode consensus macro-constant extraction for G6PD end-to-end and
 write the six artifacts (macro_constants.csv, goodness_of_fit.csv,
@@ -566,8 +597,18 @@ identifiable_functions.csv, micro_parameters.jl, report.md, provenance.toml) to 
 (default: `./results/G6PD_<date>[_smoke]`). `smoke=true` uses a tiny fit budget for a fast
 sanity check. `nprocs` overrides the local worker-count default (see `setup_workers`); a
 SLURM allocation always overrides `nprocs`. Returns the `run_all` results.
+
+`anchor_reverse` (default `true`) controls the G6PD reverse-channel anchor. **The deployed
+law REQUIRES `anchor_reverse=true`** — it anchors `Km_NADPH_rev` (3.9 µM) in every mode to
+de-conflate the forward `Ki_NADPH` from the reverse-release Km. `anchor_reverse=false` leaves
+`Km_NADPH_rev` free, deliberately reintroducing that conflation (forward `Ki_NADPH` becomes
+non-identifiable). It is a **conflation/identifiability DIAGNOSTIC only**: the run is tagged
+`NOT DEPLOYABLE` in `micro_parameters.jl` and `report.md`, and the anchor state is recorded in
+`provenance.toml`. Use it with `variants=[:RE_rate_eq]` via `run_all` to reproduce the
+original full-RE conflating fit.
 """
-run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing) = _run_enzyme(g6pd_config(), "G6PD"; outdir, smoke, nprocs)
+run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true) =
+    _run_enzyme(g6pd_config(), "G6PD"; outdir, smoke, nprocs, anchor_reverse)
 
 """
     run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)

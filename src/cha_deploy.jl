@@ -92,12 +92,13 @@ function _deploy_micro_map(enzyme::Symbol, coords::AbstractDict; release_rate::R
             :K_PGLn_ENADPH => coords[:Kd_6PGLn],
             :koff_NADPH_E  => release_rate,
             :kon_NADPH_E   => konv,
-            :K_NADPH_EG6P  => coords[:Ki_NADPH],
         )
-        if haskey(coords, :Ki_ATP)            # ATP dead-ends dropped for :no_atp (no :Ki_ATP key)
-            micro[:K_ATPinh_E]    = coords[:Ki_ATP]
-            micro[:K_ATPinh_EG6P] = coords[:Ki_ATP_EG]
-        end
+        # Each dead-end is guarded independently: :no_atp drops both ATP entries; the
+        # no_g6p_*_deadend variants drop exactly one of {Ki_NADPH, Ki_ATP_EG} while keeping
+        # the other ATP entry (Ki_ATP) -- these must not be coupled behind one shared guard.
+        haskey(coords, :Ki_NADPH)  && (micro[:K_NADPH_EG6P]  = coords[:Ki_NADPH])
+        haskey(coords, :Ki_ATP)    && (micro[:K_ATPinh_E]    = coords[:Ki_ATP])
+        haskey(coords, :Ki_ATP_EG) && (micro[:K_ATPinh_EG6P] = coords[:Ki_ATP_EG])
         return micro
     elseif enzyme === :PGD
         # PGD's free basis keeps NADP→E·PGA (K_NADP_EPGA = old K4 = alpha·Kd_NADP), so unlike
