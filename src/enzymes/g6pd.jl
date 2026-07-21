@@ -43,6 +43,58 @@ function _g6pd_consensus_noatp()
     ], extra))
 end
 
+# Three dead-end-dropped ablation variants, each an exact ∞-limit of _g6pd_consensus(:(<-->))
+# (the deployed SS_NADPH_release_rate_eq law): unlike :no_atp/:no_g6p_nadph_deadend below,
+# these do NOT remove ATP as a metabolite (E·ATP, K8=Ki_ATP, is kept in all three), so
+# `regs=[:ATP]` is retained throughout. See docs/G6PD_kinetics_literature.md §2.3/§15.4/§17.
+
+# Drop ONLY the E·G6P·NADPH dead-end (K10=Ki_NADPH -> ∞); keep both ATP dead-end forms
+# (K8=Ki_ATP, K9=Ki_ATP_EG) unchanged. Tests whether the bare-[NADPH] reverse-release channel
+# alone (anchor_reverse=false at fit time) can carry the forward NADPH product inhibition.
+function _g6pd_consensus_no_g6p_nadph_deadend()
+    extra = _deadends([(_G6PD_ATP_FORMS, :ATP)])
+    _mech([:NADP, :G6P], [:NADPH, :PGLn], vcat([
+        ([:E, :NADP],   [:E_N],  :(⇌)),
+        ([:E, :G6P],    [:E_G],  :(⇌)),
+        ([:E_N, :G6P],  [:E_NB], :(⇌)),
+        ([:E_G, :NADP], [:E_NB], :(⇌)),
+        ([:E_NB],       [:E_C],  :(<-->)),            # catalysis (forced SS, gauge anchor)
+        ([:E_C], [:E_H, :PGLn],  :(⇌)),               # PGLn release (RE)
+        ([:E_H], [:E, :NADPH],   :(<-->)),            # NADPH release (SS, promoted)
+    ], extra); regs=[:ATP])
+end
+
+# Drop ONLY the E·G6P·ATP dead-end (K9=Ki_ATP_EG -> ∞): ATP dead-end restricted to free-E form
+# only ([:E], i.e. K8=Ki_ATP kept). NADPH dead-end (K10=Ki_NADPH) unchanged. Literature Ki_ATP_EG
+# (Ninfali 1996, ATP·Mg uncompetitive vs G6P) is ≈30 mM, superphysiological — expect droppable.
+function _g6pd_consensus_no_g6p_atp_deadend()
+    extra = _deadends([([:E], :ATP), (_G6PD_NADPH_FORMS, :NADPH)])
+    _mech([:NADP, :G6P], [:NADPH, :PGLn], vcat([
+        ([:E, :NADP],   [:E_N],  :(⇌)),
+        ([:E, :G6P],    [:E_G],  :(⇌)),
+        ([:E_N, :G6P],  [:E_NB], :(⇌)),
+        ([:E_G, :NADP], [:E_NB], :(⇌)),
+        ([:E_NB],       [:E_C],  :(<-->)),            # catalysis (forced SS, gauge anchor)
+        ([:E_C], [:E_H, :PGLn],  :(⇌)),               # PGLn release (RE)
+        ([:E_H], [:E, :NADPH],   :(<-->)),            # NADPH release (SS, promoted)
+    ], extra); regs=[:ATP])
+end
+
+# Drop BOTH: E·G6P·NADPH (K10 -> ∞) AND E·G6P·ATP (K9 -> ∞). Keeps only the free-E ATP
+# dead-end (K8=Ki_ATP). Combines both ablations above in one mechanism.
+function _g6pd_consensus_no_g6p_both_deadends()
+    extra = _deadends([([:E], :ATP)])
+    _mech([:NADP, :G6P], [:NADPH, :PGLn], vcat([
+        ([:E, :NADP],   [:E_N],  :(⇌)),
+        ([:E, :G6P],    [:E_G],  :(⇌)),
+        ([:E_N, :G6P],  [:E_NB], :(⇌)),
+        ([:E_G, :NADP], [:E_NB], :(⇌)),
+        ([:E_NB],       [:E_C],  :(<-->)),            # catalysis (forced SS, gauge anchor)
+        ([:E_C], [:E_H, :PGLn],  :(⇌)),               # PGLn release (RE)
+        ([:E_H], [:E, :NADPH],   :(<-->)),            # NADPH release (SS, promoted)
+    ], extra); regs=[:ATP])
+end
+
 const _G6PD_KI_MAP = Dict{MonoKey,Symbol}(
     [:ATP   => 1] => :Ki_ATP,
     [:PGLn  => 1] => :Ki_6PGLn,
@@ -67,7 +119,10 @@ register_enzyme!(EnzymeWiring(
     :G6PD, :G6P,
     [(name=:RE_rate_eq,                mech=_g6pd_consensus(:(⇌))),
      (name=:SS_NADPH_release_rate_eq,  mech=_g6pd_consensus(:(<-->))),
-     (name=:no_atp,                    mech=_g6pd_consensus_noatp())],
+     (name=:no_atp,                    mech=_g6pd_consensus_noatp()),
+     (name=:no_g6p_nadph_deadend,      mech=_g6pd_consensus_no_g6p_nadph_deadend()),
+     (name=:no_g6p_atp_deadend,        mech=_g6pd_consensus_no_g6p_atp_deadend()),
+     (name=:no_g6p_both_deadends,      mech=_g6pd_consensus_no_g6p_both_deadends())],
     Dict{Symbol,Float64}(
         :Ki_6PGLn     => log10(2.0e-4),
         :Ki_ATP       => log10(1.5e-3),

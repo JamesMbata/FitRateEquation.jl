@@ -82,6 +82,12 @@ function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy)
     if enzyme === :G6PD
         return variant === :no_atp ?
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Km_NADPH_rev] :
+        variant === :no_g6p_nadph_deadend ?
+            [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_ATP, :Ki_ATP_EG, :Km_NADPH_rev] :
+        variant === :no_g6p_atp_deadend ?
+            [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Ki_ATP, :Km_NADPH_rev] :
+        variant === :no_g6p_both_deadends ?
+            [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_ATP, :Km_NADPH_rev] :
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EG,
              :Km_NADPH_rev]
     elseif enzyme === :PGD
@@ -189,7 +195,7 @@ function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
                   Kd_6PGLn  = coords[:Kd_6PGLn],
                   alpha     = coords[:alpha],
                   Km_NADPH_rev = coords[:Km_NADPH_rev],
-                  Ki_NADPH  = coords[:Ki_NADPH],
+                  Ki_NADPH  = get(coords, :Ki_NADPH,  Inf),
                   Ki_ATP    = get(coords, :Ki_ATP,    Inf),
                   Ki_ATP_EG = get(coords, :Ki_ATP_EG, Inf),
                   koffQ = koffQ, konQ = konQ, kf = kf, kr = krv, Et = Et,
@@ -527,6 +533,10 @@ end
 #       dead-end Ki_NADPH trade off with the bare-[NADPH] productive-release reverse channel,
 #       railing Ki_NADPH; anchoring Km_NADPH_rev de-conflates it to ~24µM). Kd_6PGLn is left
 #       FREE (a harmless 6PGL-binding nuisance → classifies :unconstrained on forward data).
+#       The `anchor_reverse` kwarg (default true) can turn this off: `anchor_reverse=false`
+#       leaves Km_NADPH_rev FREE, deliberately reintroducing the forward/reverse Ki_NADPH
+#       conflation. This is a DIAGNOSTIC ONLY — the deployed law REQUIRES the anchor; a fit
+#       with anchor_reverse=false is not deployable (Ki_NADPH goes non-identifiable).
 #     - PGD: nothing always-anchored. PGD's reverse constants have no literature values
 #       (Dalziel nuisance) so they are left free/unconstrained.
 #
@@ -541,7 +551,7 @@ end
 #   NEVER as a hard coord-pin (mirrors pins.jl::resolve_coord_pins which keeps Km_PGA on the
 #   coord side; here Km_PGA is not even a coord).
 # -----------------------------------------------------------------------------------------
-function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol)
+function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol; anchor_reverse::Bool=true)
     lit    = FitRateEquation._lit_values(enzyme)
     coords = cha_coords(enzyme, variant)
     pins   = Dict{Symbol,Float64}()
@@ -576,7 +586,8 @@ function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol)
     end
 
     # ALL MODES: anchor the conflating reverse channel where it is a coord with a lit value.
-    enzyme === :G6PD && (:Km_NADPH_rev in coords) && _pin!(:Km_NADPH_rev)
+    # `anchor_reverse=false` leaves it FREE (diagnostic — reintroduces the Ki_NADPH conflation).
+    anchor_reverse && enzyme === :G6PD && (:Km_NADPH_rev in coords) && _pin!(:Km_NADPH_rev)
 
     # MODE 2 / MODE 3: additionally pin the forward inhibition constants to literature.
     if mode === :mode2 || mode === :mode3

@@ -147,7 +147,8 @@ end
 function koffq_hybrid_report(mech, d::Dataset;
                              keq::Real = median(d.keq),
                              variant::Symbol = :SS_NADPH_release_rate_eq,
-                             koffQ_deploy::Real = 1.0e3)
+                             koffQ_deploy::Real = 1.0e3,
+                             anchor_reverse::Bool = true)
     rev_idx = _pgln_rows(d)
     n_reverse = length(rev_idx)
 
@@ -155,7 +156,8 @@ function koffq_hybrid_report(mech, d::Dataset;
     #     fit on the FULL unweighted corpus (the deploy fit); koffQ does not enter them (it is
     #     gauged into C, and the fit uses the default healthy release_rate).
     base = cha_fit_candidate(:G6PD, mech, d; n_restarts=6, maxiter=300, maxtime=60.0, seed=1,
-                             keq=keq, pins=resolve_cha_pins(:G6PD, variant, :mode1))
+                             keq=keq,
+                             pins=resolve_cha_pins(:G6PD, variant, :mode1; anchor_reverse=anchor_reverse))
 
     # (2) Reverse-weighted diagnostic: up-weight the PGLn>0 groups, then 1-D minimize the
     #     reverse-weighted loss over lk = log10(koffQ) holding the forward coords fixed.

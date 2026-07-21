@@ -16,6 +16,7 @@ using Test
     include("test_cha_koffq.jl")
     include("test_cha_silence.jl")
     include("test_cha_noatp.jl")
+    include("test_cha_g6pd_deadend_variants.jl")
     include("test_rec4_topology_freeze.jl")
     # Run / outputs / modes / parallel determinism
     include("test_run_fit.jl")

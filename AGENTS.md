@@ -183,6 +183,13 @@ budget:
 
 ## Modes
 
+**G6PD's rate law is under active development.** The mode/anchor/ablation machinery
+below (`anchor_reverse`, mode1 vs mode2/3, the dead-end ablation variants) is
+scaffolding for a not-yet-settled law, not a permanent API surface — expect these
+gates to simplify as the mechanism converges (e.g. dropping the `anchor_reverse`
+distinction if the anchor turns out unnecessary on the full corpus, or promoting an
+ablation variant to be the deployed law outright).
+
 Each enzyme is fit in **per-enzyme modes** (`modes_for`: G6PD = `mode1, mode2`;
 PGD = `mode1, mode2, mode3`), written to separate, never-cross-ranked leaderboards.
 Pins are resolved structurally by `ChaFit.resolve_cha_pins`; the PGD `Km_PGA` anchor
@@ -197,6 +204,21 @@ pin (it is a derived constant, not a coord).
 - **Mode 3** (PGD only) — the explicit `Km_PGA` **hard override** (38 µM) realized as
   a high-weight (100) apparent-Km anchor.
 
+**`anchor_reverse` (G6PD switch, variant-aware default).** `run_all`/`run_g6pd` accept
+`anchor_reverse`; when `false`, `resolve_cha_pins` drops the all-modes `Km_NADPH_rev`
+anchor, risking the forward/reverse `Ki_NADPH` conflation. Its default
+(`_default_anchor_reverse`) is `false` only when every variant being fit is one of the
+three ablation variants below (`_G6PD_ANCHOR_OPTIONAL_VARIANTS`); `true` otherwise.
+**The deployed law (`SS_NADPH_release_rate_eq`) still requires `anchor_reverse=true`**
+— verified on the full 565-row corpus, dropping the anchor there still leaves
+`Ki_NADPH` railed. Where it applies, this is an identifiability failure, not a
+parsimony trade-off: removing the anchor doesn't simplify the mechanism, it leaves
+`Ki_NADPH` railed at the *same* parameter count. Explicitly forcing `anchor_reverse=
+false` on a variant that still requires it (the deploy variant, `:RE_rate_eq`) tags
+that variant's output `NOT DEPLOYABLE` in `micro_parameters.jl`/`report.md`
+(per-variant, not per-run); the anchor state + variants are always recorded in
+`provenance.toml`. No-op for PGD/HK1.
+
 Pinned constants are tagged `:literature_pinned` **structurally** (a coordinate that
 has a pin), never from profile curvature. `report.md` surfaces a **mode-agreement
 check** on the forward shape constants: if a "pinned" constant was not actually flat
@@ -204,15 +226,47 @@ check** on the forward shape constants: if a "pinned" constant was not actually 
 distortion warning fires — never hidden. Pinned/derived rows never enter the check,
 so an intended data-vs-physiology contrast is not mislabeled a flatness warning.
 
-**Convention (mode 1 is deploy for new laws):** for any law adopting it, **mode 1 is
-the deploy source of truth; mode 2/3 are diagnostics/validation only**, not deploy
-candidates. This is a convention for *future* re-derivations — the currently
-deployed full-G6PD law (mode2, literature-pinned `Ki_ATP`/`Ki_NADPH`, "the ODE
-drop-in" above) and PGD (mode2/3) are unchanged and keep their existing deploy
-status until they are themselves re-derived. The first law to adopt the convention
-is the ATP-free G6PD variant (`:no_atp`, `src/enzymes/g6pd.jl`): with the ATP
-dead-ends dropped entirely, its mode1 free fit is fully data-identified, so mode1 is
-its deploy candidate and mode2 (`Ki_NADPH` literature pin only) is diagnostics-only.
+**Standing rule (parsimony-first): mode 1 is deploy for future re-derivations.**
+Mode 1 is the deploy source of truth; mode 2/3 are literature-sensitivity diagnostics
+only, never an independent deploy path. The gate is mode 1 passing coupled-flux/
+simulation-accuracy validation downstream in `PPP_Experiments` — not literature
+agreement; a simpler law disagreeing with a historical assay value may just mean the
+assay isn't what the live parameter should be. Generalizes the prior `:no_atp`-only
+convention to every future re-derivation — **not retroactive**: the deployed
+full-G6PD law (mode2-pinned) and PGD (mode2/3) are grandfathered until re-derived.
+`:no_atp` (`src/enzymes/g6pd.jl`) is the first law under the rule: its mode1 fit is
+fully data-identified, so mode1 is its deploy candidate.
+
+**Dead-end-dropped ablation variants (2026-07-20; anchor default updated 2026-07-21):**
+three further exact `Ki -> Inf` limits of the deployed law, each dropping one or both
+of the two abortive-ternary G6P-cross-term dead ends (`src/enzymes/g6pd.jl`):
+`:no_g6p_nadph_deadend` (drops `E·G6P·NADPH`, `Ki_NADPH -> Inf`),
+`:no_g6p_atp_deadend` (drops `E·G6P·ATP`, `Ki_ATP_EG -> Inf`),
+`:no_g6p_both_deadends` (drops both) — all three now default `anchor_reverse=false`.
+`:no_g6p_atp_deadend` originally needed `anchor_reverse=true` to de-conflate
+`Ki_NADPH` (2026-07-20 report below), but on the smaller, more-physiological 134-row
+`mydata` corpus it jointly data-identifies BOTH `Km_NADPH_rev` and `Ki_NADPH` without
+the anchor (`results/no_g6p_atp_deadend_anchor_false_mydata`, 2026-07-21) — not yet
+confirmed on the full 565-row historical corpus (`SS_anchor_reverse_false`, same day,
+still shows `Ki_NADPH` unconstrained there), and possibly reflecting `mydata`'s more
+physiological assay conditions rather than a like-for-like comparison. Unresolved;
+the exemption stays scoped to these three variants, not promoted to the deployed law.
+
+Model-selection verdict on the original (anchor-appropriate) fits
+(`results/G6PD_deadend_variants_report.md`): `:no_g6p_atp_deadend` is a clean
+parsimony win (forward constants unchanged, CV improves an order of magnitude in
+mode2) — `Ki_ATP_EG` was an unconstrained nuisance dimension with zero forward-fit
+benefit, consistent with its ~30 mM literature Ki (Ninfali 1996, superphysiological).
+The NADPH-dead-end drops are NOT recommended: `alpha` loses `data_identified` status
+and LOAO CV degrades or destabilizes — the bare-`[NADPH]` reverse-release channel
+does not cleanly substitute for the dedicated forward cross-term. None of the three
+has been deployed; only `:no_g6p_atp_deadend` is a plausible future deploy candidate,
+pending the coupled-oxidative-flux check.
+
+**Reading `unconstrained`:** it flags a term worth testing by ablation, not proof it's
+droppable — the finding above is the counterexample: `Ki_ATP_EG` (`unconstrained`)
+was safe to drop, `Ki_NADPH` (`data_identified`) was not. Classification alone
+doesn't predict drop-safety; only an actual ablation does.
 
 ## Running
 
@@ -253,9 +307,13 @@ run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
   run_all(cfg; outdir="my_results", n_restarts=48, maxiter=1000)
   ```
 - **Fit variants per enzyme:** G6PD `:SS_NADPH_release_rate_eq` (deploy) + `:no_atp`
-  (ATP-free, via `run_g6pd_noatp`); PGD `:cha_base`; HK1 `:H1`, `:H4` (not runnable
-  while guarded). `run_all(cfg; variants=[…], row_filter=…)` exposes a custom
-  variant set / row filter directly for advanced use.
+  (ATP-free, via `run_g6pd_noatp`) + the dead-end-dropped ablations
+  `:no_g6p_nadph_deadend`, `:no_g6p_atp_deadend`, `:no_g6p_both_deadends` (no
+  dedicated runners — direct `run_all(cfg; variants=[…], anchor_reverse=…)`, no
+  row filter needed since ATP stays a metabolite in all three); PGD `:cha_base`;
+  HK1 `:H1`, `:H4` (not runnable while guarded). `run_all(cfg; variants=[…],
+  row_filter=…)` exposes a custom variant set / row filter directly for advanced
+  use.
 - Configs (data CSV, `deploy_keq`, metabolite columns/units) live in
   `src/configs/G6PD.jl`, `src/configs/PGD.jl`, `src/configs/HK1.jl`. The bundled
   corpora resolve via `pkgdir(FitRateEquation)` so they load correctly regardless

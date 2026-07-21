@@ -80,7 +80,7 @@ function cha_macro_readoffs_G6PD(m, logθ; keq::Real)
 
     Kd_NADP   = named[:Kd_NADP]     # = 1/g[NADP]
     Kd_G6P    = named[:Kd_G6P]      # = 1/g[G6P]
-    Ki_NADPH  = named[:Ki_NADPH]    # = g[G6P]/g[G6P·NADPH] (dead-end cross-term)
+    Ki_NADPH  = get(named, :Ki_NADPH, Inf)  # = g[G6P]/g[G6P·NADPH]; Inf when no E·G6P·NADPH dead-end
     Ki_ATP    = get(named, :Ki_ATP, Inf)              # Inf when no free-E ATP dead-end
     Ki_ATP_EG = atpEG_sym === nothing ? Inf : vals[atpEG_sym]  # Inf when no E·G6P ATP dead-end
     Kd_6PGLn  = vals[pgln_sym]      # = K6 (step-6 PGLn binding), NOT macro :Ki_6PGLn
