@@ -8,21 +8,25 @@ using Test, FitRateEquation
 # against a fixture generated on a DIFFERENT machine/run, which is a different and much weaker
 # guarantee.
 #
-# Default check (every machine, every CI job): columns 1,2,3,5 (variant,mode,name,class) must
-# match EXACTLY. These don't depend on the CMA-ES trajectory's last bits -- only on which macro
-# coordinates exist for a given (variant,mode) and how they're classified -- so they are stable
-# across machines and still catch a real regression (a variant disappearing, a coordinate's
-# class flipping).
+# Default check (every machine, every CI job): columns 1,2,3 (variant,mode,name) must match
+# EXACTLY. These are purely STRUCTURAL -- they name which macro coordinates exist for a given
+# (variant,mode) -- so they don't depend on the CMA-ES trajectory at all and are provably stable
+# across machines, while still catching a real regression (a variant or coordinate disappearing,
+# a mode's coordinate set changing).
 #
-# The fitted VALUE (column 4) and its CI (column 6) are NOT compared by default. Measured on a
-# non-reference machine (2026-07-21), smoke-budget drift ranged from ~30-58% for otherwise
-# `data_identified` coordinates (Kd_NADP, Ki_NADPH) to ~90-100% for `unconstrained` ones
-# (Ki_ATP, Ki_ATP_EG) -- nothing like the ~0.1-0.5% "hardware noise" once assumed here. At smoke
-# budget (tiny iteration count) the CMA-ES trajectory is under-converged, so different RNG/BLAS
-# reduction ordering across machines lands in a materially different (but still smoke-quality)
-# point, not just the last few bits. No single tolerance both survives that spread and still
-# catches a real regression, so exact value/ci reproduction is opt-in only
-# (`FITRATEEQ_BYTE_IDENTITY=1`), for whoever is on the fixture's reference machine + Julia series.
+# The fitted VALUE (column 4), its CLASS (column 5) and its CI (column 6) are NOT compared by
+# default -- ALL THREE are fit-derived and machine-dependent. Measured on a non-reference machine
+# (2026-07-21), smoke-budget VALUE drift ranged from ~30-58% for otherwise `data_identified`
+# coordinates (Kd_NADP, Ki_NADPH) to ~90-100% for `unconstrained` ones (Ki_ATP, Ki_ATP_EG) --
+# nothing like the ~0.1-0.5% "hardware noise" once assumed here. At smoke budget (tiny iteration
+# count) the CMA-ES trajectory is under-converged, so different RNG/BLAS reduction ordering across
+# machines lands in a materially different (but still smoke-quality) point. CLASS is not exempt:
+# it is decided by cha_classify from the Hessian at that same drifted optimum, so a coordinate
+# sitting near the stiff_frac / ci_rel_tol identifiability boundary flips data_identified <->
+# unconstrained across machines (observed on CI: cha_base/mode2 Kd_PGA and Kd_CO2). No single
+# tolerance both survives that spread and still catches a real regression, so exact value/class/ci
+# reproduction is opt-in only (`FITRATEEQ_BYTE_IDENTITY=1`), for whoever is on the fixture's
+# reference machine + Julia series.
 
 function _macro_csv(runner)
     out = mktempdir()
@@ -45,11 +49,11 @@ function _check(runner, fixture_path)
     ref = _rows(read(fixture_path, String))
     @test length(got) == length(ref)
     for (g, r) in zip(got, ref)
-        @test g[[1, 2, 3, 5]] == r[[1, 2, 3, 5]]   # variant,mode,name,class: exact, every machine
+        @test g[[1, 2, 3]] == r[[1, 2, 3]]         # variant,mode,name: which coords exist -- exact, every machine
     end
     if _strict_opt_in() && _on_fixture_julia()
         for (g, r) in zip(got, ref)
-            @test g[4] == r[4]                    # value: exact, opt-in only
+            @test g[[4, 5]] == r[[4, 5]]          # value, class: fit-derived, exact, opt-in only
             gf, rf = tryparse(Float64, g[6]), tryparse(Float64, r[6])
             if gf === nothing || rf === nothing || isnan(rf)
                 @test g[6] == r[6]                # header row ("ci") or NaN reference: exact string
@@ -58,7 +62,7 @@ function _check(runner, fixture_path)
             end
         end
     else
-        @test_skip "exact value/ci reproduction is opt-in (FITRATEEQ_BYTE_IDENTITY=1) on Julia $(_FIXTURES_JULIA_SERIES)"
+        @test_skip "exact value/class/ci reproduction is opt-in (FITRATEEQ_BYTE_IDENTITY=1) on Julia $(_FIXTURES_JULIA_SERIES)"
     end
 end
 
