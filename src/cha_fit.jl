@@ -419,14 +419,16 @@ end
 # -----------------------------------------------------------------------------------------
 function cha_apparent_km(enzyme::Symbol, coords::AbstractDict, which::Symbol;
                          kf::Real = 1.0,
-                         release_rate::Real = CHA_DEPLOY_RELEASE_RATE)
+                         release_rate::Real = CHA_DEPLOY_RELEASE_RATE,
+                         variant::Symbol = :_deploy)
     # HK1: C = 1 (no SS-release fiber) and gamma = 1, so apparent Km == binary Kd directly.
     if enzyme === :HK1
         which === :Km_Glc && return coords[:Kd_Glc]
         which === :Km_ATP && return coords[:Kd_ATP]
         error("cha_apparent_km(:HK1): expected :Km_Glc or :Km_ATP (got $which)")
     end
-    C = 1 + kf / release_rate
+    # Fully-RE PGD is fiber-free (HK1 precedent): C = 1, so apparent Km == alpha*Kd exactly.
+    C = (enzyme === :PGD && variant === :full_re) ? 1.0 : 1 + kf / release_rate
     kd = which === :Km_PGA  ? coords[:Kd_PGA] :
          which === :Km_NADP ? coords[:Kd_NADP] :
          which === :Km_G6P  ? coords[:Kd_G6P] :

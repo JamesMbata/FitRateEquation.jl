@@ -72,3 +72,21 @@ end
     m2 = cha_macro_tuple(:PGD, merge(coords, Dict(:Ki_ATP=>1e-3)); keq=keq, variant=:full_re)
     @test haskey(m2, :Ki_ATP) && m2.Ki_ATP == 1e-3
 end
+
+@testset "cha_apparent_km(:PGD, :full_re): C=1 so Km == alpha*Kd" begin
+    coords = _fr_coords()
+    @test cha_apparent_km(:PGD, coords, :Km_NADP; variant=:full_re) ≈ coords[:alpha]*coords[:Kd_NADP]
+    @test cha_apparent_km(:PGD, coords, :Km_PGA;  variant=:full_re) ≈ coords[:alpha]*coords[:Kd_PGA]
+    # Fiber-free: independent of release_rate (C=1 exactly, unlike the cha_base 1+kf/r).
+    @test cha_apparent_km(:PGD, coords, :Km_NADP; variant=:full_re, release_rate=1.0) ==
+          cha_apparent_km(:PGD, coords, :Km_NADP; variant=:full_re, release_rate=1e9)
+    # cha_base default path unchanged: C = 1 + kf/CHA_DEPLOY_RELEASE_RATE ≠ 1.
+    base = Dict(:Kd_NADP=>1e-5, :Kd_PGA=>4e-5, :alpha=>1.4, :Kd_CO2=>1e-4)
+    @test cha_apparent_km(:PGD, base, :Km_NADP) ≈ 1.4*1e-5 / (1 + 1/CHA_DEPLOY_RELEASE_RATE)
+end
+
+@testset "cha_specificity(:PGD): kcat/Km = kf/(alpha*Kd), fiber-invariant" begin
+    coords = _fr_coords()
+    @test cha_specificity(:PGD, coords, :Km_NADP) ≈ 1.0/(coords[:alpha]*coords[:Kd_NADP])
+    @test cha_specificity(:PGD, coords, :Km_PGA)  ≈ 1.0/(coords[:alpha]*coords[:Kd_PGA])
+end
