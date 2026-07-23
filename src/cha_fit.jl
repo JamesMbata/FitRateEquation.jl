@@ -280,7 +280,8 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
                                     kr::Union{Nothing,Real} = nothing,
                                     variant::Symbol = :_deploy)
     cha_rate_enz = enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
-                   enzyme === :PGD  ? ChaLaws.cha_rate_PGD :
+                   enzyme === :PGD  ? (variant === :full_re ? ChaLaws.cha_rate_PGD_fullRE :
+                                                              ChaLaws.cha_rate_PGD) :
                    enzyme === :HK1  ? ChaLawsHK1.cha_rate_HK1 :
                    error("cha_centered_logratio_loss: unknown enzyme $enzyme")
     n = nrows(d)
