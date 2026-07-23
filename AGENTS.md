@@ -62,6 +62,18 @@ deploy (promoted) variant per enzyme** — it is not a multi-variant panel:
   silent fiber is promoted). Super-node `S = {E_C ⇌ E_1}`, RE-linked by
   `s = CO2/Kd_CO2`.
 
+An **additive** fully-rapid-equilibrium PGD variant, **`:full_re`**, is also
+registered (run it with `run_pgd_fullre`). It keeps only catalysis at steady state
+and makes *every* product release a rapid-equilibrium dissociation (ordered
+CO₂ → Ru5P → NADPH), so there is **no promoted SS-release fiber** (`C = 1`,
+apparent Km = α·Kd) and NADPH becomes a **competitive free-E ligand**. The law is
+`ChaLaws.cha_rate_PGD_fullRE` with readoff `ChaInvert.cha_macro_readoffs_PGD_fullRE`;
+every code path is guarded on `variant === :full_re`, so `:cha_base` (and G6PD/HK1)
+are byte-identical when it is not selected. It is an **evaluation-only** variant —
+not deployed into `PentosePhosphatePathway.jl`. See
+[`docs/pgd_fullre_evaluation.md`](docs/pgd_fullre_evaluation.md) for the fit / CV /
+Holten findings and the α = 1 recommendation.
+
 The numeric Cha laws are exactness-anchored against `EnzymeRates.rate_equation` for
 the real micro mechanism at **120/120 @ rtol 1e-10** — this exactness anchor is
 carried forward as the package's `test/test_cha_laws.jl` / `test_cha_pgd_laws.jl`
@@ -284,6 +296,7 @@ using FitRateEquation
 
 run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing)
 run_pgd(;  outdir=nothing, smoke=false, nprocs=nothing)
+run_pgd_fullre(; outdir=nothing, smoke=false, nprocs=nothing)   # additive :full_re PGD variant, not deployed
 run_hk1(;  outdir=nothing, smoke=false, nprocs=nothing)         # errors: HK1 guarded, see above
 run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
 ```
@@ -310,7 +323,8 @@ run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
   (ATP-free, via `run_g6pd_noatp`) + the dead-end-dropped ablations
   `:no_g6p_nadph_deadend`, `:no_g6p_atp_deadend`, `:no_g6p_both_deadends` (no
   dedicated runners — direct `run_all(cfg; variants=[…], anchor_reverse=…)`, no
-  row filter needed since ATP stays a metabolite in all three); PGD `:cha_base`;
+  row filter needed since ATP stays a metabolite in all three); PGD `:cha_base`
+  (deploy) + `:full_re` (fully-RE evaluation variant, via `run_pgd_fullre`);
   HK1 `:H1`, `:H4` (not runnable while guarded). `run_all(cfg; variants=[…],
   row_filter=…)` exposes a custom variant set / row filter directly for advanced
   use.
