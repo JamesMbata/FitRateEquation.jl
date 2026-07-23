@@ -64,3 +64,55 @@ end
                 release_rate=1e3, release_eq=1.0, mech=vb)
     @test haskey(mb, :koff_Ru5P_ENADPH) && haskey(mb, :kon_Ru5P_ENADPH)
 end
+
+_p3_syn(d, planted) = [cha_rate_PGD_fullRE(planted;
+        NADP=_p3_f(d.concs[i],:NADP), PGA=_p3_f(d.concs[i],:PGA), Ru5P=_p3_f(d.concs[i],:Ru5P),
+        CO2=_p3_f(d.concs[i],:CO2), NADPH=_p3_f(d.concs[i],:NADPH), ATP=_p3_f(d.concs[i],:ATP))
+    for i in 1:nrows(d)]
+
+@testset "classify_cha(:PGD, :full_re) yields a well-formed identifiability spectrum" begin
+    m = _p3_re_mech()
+    d0 = load_dataset(pgd_config()); keq = median(d0.keq)
+    Random.seed!(23)
+    logθ = -3 .+ 2 .* rand(length(free_params(m)))
+    planted = cha_macro_readoffs_PGD_fullRE(m, logθ; keq=keq)
+    d = _p3_with_rates(d0, _p3_syn(d0, planted))
+    fit = cha_fit_candidate(:PGD, m, d; n_restarts=8, maxiter=400, maxtime=60.0, seed=1,
+                            keq=keq, variant=:full_re)
+    idf = cha_identifiable_functions(:PGD, m, d, fit.coords; keq=keq, variant=:full_re)
+    cs = cha_coords(:PGD, :full_re)
+    @test length(idf.eigvals) == length(cs) == 6
+    @test all(isfinite, idf.eigvals)
+    @test idf.idx == collect(1:6)             # mode-1: nothing pinned
+    @test 0 <= idf.rank <= 6
+    sigma2 = fit.loss / max(nrows(d) - idf.rank, 1)
+    classed = classify_cha(:PGD, m, d, fit.coords, Dict{Symbol,Float64}(), idf;
+                           keq=keq, sigma2=sigma2, variant=:full_re)
+    @test Set(getfield.(classed, :name)) == Set(cs)
+    for c in classed
+        @test c.class in (:data_identified, :unconstrained)
+        @test (c.class === :data_identified) ? (isfinite(c.ci) && c.ci > 0) : isnan(c.ci)
+    end
+    classed2 = classify_cha(:PGD, m, d, fit.coords, Dict{Symbol,Float64}(), idf;
+                            keq=keq, sigma2=sigma2, variant=:full_re)
+    @test all(classed[i].class === classed2[i].class for i in eachindex(classed))
+end
+
+@testset "classify_cha(:PGD, :full_re) honors a coord pin (literature_pinned path)" begin
+    m = _p3_re_mech()
+    d0 = load_dataset(pgd_config()); keq = median(d0.keq)
+    Random.seed!(23)
+    logθ = -3 .+ 2 .* rand(length(free_params(m)))
+    planted = cha_macro_readoffs_PGD_fullRE(m, logθ; keq=keq)
+    d = _p3_with_rates(d0, _p3_syn(d0, planted))
+    pins = Dict(:Kd_CO2 => log10(1e-4))
+    fit = cha_fit_candidate(:PGD, m, d; n_restarts=8, maxiter=400, maxtime=60.0, seed=1,
+                            keq=keq, pins=pins, variant=:full_re)
+    idf = cha_identifiable_functions(:PGD, m, d, fit.coords; keq=keq, pins=pins, variant=:full_re)
+    @test idf.idx == [j for (j, s) in enumerate(cha_coords(:PGD, :full_re)) if s !== :Kd_CO2]
+    sigma2 = fit.loss / max(nrows(d) - idf.rank, 1)
+    classed = classify_cha(:PGD, m, d, fit.coords, pins, idf; keq=keq, sigma2=sigma2, variant=:full_re)
+    cco2 = classed[findfirst(c -> c.name === :Kd_CO2, classed)]
+    @test cco2.class === :literature_pinned
+    @test isapprox(cco2.value, 1e-4; rtol=1e-8)
+end
