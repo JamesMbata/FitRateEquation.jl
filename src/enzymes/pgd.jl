@@ -89,6 +89,27 @@ function _pgd_fullre_core()
     ]; regs=Symbol[])
 end
 
+# Fully-RE + free-E CO2/Ru5P DEAD-ENDS (:full_re_deadends): the :full_re core plus two
+# rapid-equilibrium abortive complexes — CO2 and Ru5P each bind FREE enzyme (E·CO2, E·Ru5P,
+# pendant nodes). These add bare-[CO2]/[Ru5P] competitive denominator terms (macro Ki_CO2 /
+# Ki_Ru5P) so CO2/Ru5P inhibit even in NADPH-free single-product assays (Weisz 1985 6A–7B),
+# which the strictly-ordered :full_re forbids (all its CO2/Ru5P terms carry a factor of NADPH).
+# EnzymeRates names the two new free-params K_CO2_E / K_Ru5P_E (verified by introspection);
+# free_params = the 6 :full_re core Kd's + those two. ATP effectors OFF (regs=Symbol[]).
+function _pgd_fullre_deadends_core()
+    extra = _deadends([([:E], :CO2), ([:E], :Ru5P)])
+    _mech([:NADP, :PGA], [:Ru5P, :CO2, :NADPH], vcat([
+        ([:E, :NADP],   [:E_N],  :(⇌)),               # NADP binds free E   ┐ random
+        ([:E, :PGA],    [:E_G],  :(⇌)),               # PGA binds free E    │ substrate
+        ([:E_N, :PGA],  [:E_NB], :(⇌)),               # PGA binds E·NADP    │ binding
+        ([:E_G, :NADP], [:E_NB], :(⇌)),               # NADP binds E·PGA    ┘
+        ([:E_NB],       [:E_C],  :(<-->)),            # catalysis (forced SS, gauge anchor)
+        ([:E_C], [:E_1, :CO2],   :(⇌)),               # CO2 release  (RE, first out)
+        ([:E_1], [:E_2, :Ru5P],  :(⇌)),               # Ru5P release (RE)
+        ([:E_2], [:E, :NADPH],   :(⇌)),               # NADPH release (RE, last)
+    ], extra); regs=Symbol[])
+end
+
 const _PGD_KI_MAP = Dict{MonoKey,Symbol}(
     [:Ru5P  => 1] => :Ki_Ru5P,
     [:CO2   => 1] => :Ki_CO2,
@@ -124,7 +145,8 @@ register_enzyme!(EnzymeWiring(
      (name=:SS_NADPH_release_rate_eq, mech=_pgd_consensus(:(<-->), :(<-->))),
      (name=Symbol("+NADPH_deadend_rate_eq"), mech=_pgd_v3()),
      (name=:cha_base, mech=_pgd_cha_base()),
-     (name=:full_re,  mech=_pgd_fullre_core())],
+     (name=:full_re,  mech=_pgd_fullre_core()),
+     (name=:full_re_deadends, mech=_pgd_fullre_deadends_core())],
     Dict{Symbol,Float64}(
         :Ki_ATP => log10(1.7e-3),
         :Km_PGA => log10(38e-6),   # lit low-end of the 38–80 µM band (Mode-3 override; provisional)

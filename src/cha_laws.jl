@@ -195,6 +195,8 @@ function cha_rate_PGD_fullRE(m; NADP=0.0, PGA=0.0, Ru5P=0.0, CO2=0.0, NADPH=0.0,
     Ki_ATP    = hasproperty(m, :Ki_ATP)    ? m.Ki_ATP    : Inf   # ATP dead-end on free E
     Ki_ATP_EN = hasproperty(m, :Ki_ATP_EN) ? m.Ki_ATP_EN : Inf   # ATP dead-end on E·NADP
     Ki_NADPH  = hasproperty(m, :Ki_NADPH)  ? m.Ki_NADPH  : Inf   # NADPH dead-end on E·PGA
+    Ki_CO2    = hasproperty(m, :Ki_CO2)    ? m.Ki_CO2    : Inf   # CO2  dead-end on free E (competitive)
+    Ki_Ru5P   = hasproperty(m, :Ki_Ru5P)   ? m.Ki_Ru5P   : Inf   # Ru5P dead-end on free E (competitive)
 
     # Forward-competent ternary fraction (relative to free E).
     gAB = A * B / (alpha * Kd_NADP * Kd_PGA)
@@ -210,7 +212,9 @@ function cha_rate_PGD_fullRE(m; NADP=0.0, PGA=0.0, Ru5P=0.0, CO2=0.0, NADPH=0.0,
         Q * R * Cc / (Kd_NADPH * Kd_Ru5P * Kd_CO2) +    # E·NADPH·Ru5P·CO2 (product central)
         ATP / Ki_ATP +                                  # ATP dead-end on free E
         (A / Kd_NADP) * (ATP / Ki_ATP_EN) +             # ATP dead-end on E·NADP
-        (B / Kd_PGA) * (Q / Ki_NADPH)                   # NADPH dead-end on E·PGA (fwd Ki)
+        (B / Kd_PGA) * (Q / Ki_NADPH) +                 # NADPH dead-end on E·PGA (fwd Ki)
+        Cc / Ki_CO2 +                                   # CO2 dead-end on free E  (competitive vs both subs)
+        R / Ki_Ru5P                                     # Ru5P dead-end on free E (competitive vs both subs)
 
     # Net flux through the single SS catalytic step: kf*[E·NADP·PGA] - kr*[E·CO2·Ru5P·NADPH].
     num = kf * gAB - kr * Q * R * Cc / (Kd_NADPH * Kd_Ru5P * Kd_CO2)

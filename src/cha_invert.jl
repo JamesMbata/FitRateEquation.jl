@@ -229,6 +229,8 @@ function cha_macro_readoffs_PGD_fullRE(m, logθ; keq::Real)
        Ki_ATP    = get(vals, :K_ATPinh_E,     Inf),   # ATP on free E
        Ki_ATP_EN = get(vals, :K_ATPinh_ENADP, Inf),   # ATP on E·NADP
        Ki_NADPH  = get(vals, :K_NADPH_EPGA,   Inf),   # NADPH on E·PGA (V3 only)
+       Ki_CO2    = get(vals, :K_CO2_E,  Inf),          # CO2 dead-end on free E  (:full_re_deadends only)
+       Ki_Ru5P   = get(vals, :K_Ru5P_E, Inf),          # Ru5P dead-end on free E (:full_re_deadends only)
        Keq = get(vals, :Keq, NaN))
 end
 

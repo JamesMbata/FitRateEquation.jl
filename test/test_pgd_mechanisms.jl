@@ -5,7 +5,8 @@ using Test
 @testset "PGD mechanisms" begin
     vs = FitRateEquation.consensus_variants(:PGD)
     @test [v.name for v in vs] == [:RE_rate_eq, :SS_NADPH_release_rate_eq,
-                                   Symbol("+NADPH_deadend_rate_eq"), :cha_base, :full_re]
+                                   Symbol("+NADPH_deadend_rate_eq"), :cha_base, :full_re,
+                                   :full_re_deadends]
     v1 = vs[1].mech; v2 = vs[2].mech
     mets1 = Set(EnzymeRates.metabolites(v1))
     for s in (:NADP, :PGA, :Ru5P, :CO2, :NADPH, :ATP)
@@ -59,4 +60,21 @@ end
     @test Set([:NADP, :PGA, :CO2, :NADPH, :Ru5P]) ⊆ Set(EnzymeRates.metabolites(m))
     # Exactly one SS step (catalysis gauge); all releases RE.
     @test count(st -> st[3] == false, EnzymeRates.reactions(m)) == 1
+end
+
+@testset "PGD :full_re_deadends core: :full_re + free-E CO2/Ru5P dead-ends (8 RE free_params)" begin
+    vs = FitRateEquation.consensus_variants(:PGD)
+    i = findfirst(v -> Symbol(v.name) === :full_re_deadends, vs)
+    @test i !== nothing
+    m = vs[i].mech
+    # :full_re core (6) + the two free-E dead-ends K_CO2_E / K_Ru5P_E.
+    @test Set(free_params(m)) == Set([:K_CO2_ENADPHRu5P, :K_NADPH_E, :K_NADP_E, :K_NADP_EPGA,
+                                      :K_PGA_E, :K_Ru5P_ENADPH, :K_CO2_E, :K_Ru5P_E])
+    @test :K_CO2_E in free_params(m) && :K_Ru5P_E in free_params(m)
+    @test !any(s -> occursin("ATPinh", String(s)), free_params(m))   # effectors OFF
+    @test :ATP ∉ EnzymeRates.metabolites(m)
+    @test count(st -> st[3] == false, EnzymeRates.reactions(m)) == 1  # single SS gauge step
+    # The two new complexes are genuine pendant (degree-1) dead-ends.
+    @test :ECO2 in FitRateEquation._deadend_forms(m)
+    @test :ERu5P in FitRateEquation._deadend_forms(m)
 end
