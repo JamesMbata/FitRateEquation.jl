@@ -77,3 +77,54 @@ end
         end
     end
 end
+
+# V3 (:+NADPH_deadend_rate_eq): fully-RE + E·PGA NADPH dead-end (K_NADPH_EPGA). Exercises the
+# forward Ki_NADPH cross term the :RE_rate_eq gate leaves at Inf.
+function _pgd_v3_mech()
+    vs = FitRateEquation.consensus_variants(:PGD)
+    vs[findfirst(v -> Symbol(v.name) === Symbol("+NADPH_deadend_rate_eq"), vs)].mech
+end
+
+@testset "exactness gate: cha_rate_PGD_fullRE == rate_equation (V3, NADPH dead-end)" begin
+    m    = _pgd_v3_mech()
+    mets = EnzymeRates.metabolites(m)
+    # Points with BOTH PGA and NADPH present exercise the E·PGA·NADPH dead-end term.
+    grid = [
+        (; NADP=5e-6, PGA=40e-6, CO2=0.0,  Ru5P=0.0,  NADPH=5e-6, ATP=0.0),
+        (; NADP=5e-6, PGA=80e-6, CO2=0.0,  Ru5P=0.0,  NADPH=2e-5, ATP=0.0),
+        (; NADP=2e-5, PGA=80e-6, CO2=2e-4, Ru5P=1e-4, NADPH=8e-6, ATP=5e-4),
+    ]
+    for _ in 1:20
+        free = free_params(m)
+        logθ = -3 .+ 2 .* rand(length(free))
+        keq  = 0.079
+        mac  = cha_macro_readoffs_PGD_fullRE(m, logθ; keq=keq)
+        @test isfinite(mac.Ki_NADPH)            # V3 carries the E·PGA NADPH dead-end
+        vsat = abs(EnzymeRates.rate_equation(m,
+            NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:PGA) ? 1e-2 : 0.0 for s in mets)),
+            build_params(m, logθ; keq=keq)))
+        for conc in grid
+            cc   = NamedTuple{Tuple(mets)}(Tuple(getfield(conc, s) for s in mets))
+            vref = EnzymeRates.rate_equation(m, cc, build_params(m, logθ; keq=keq))
+            vcha = cha_rate_PGD_fullRE(mac; conc...)
+            @test isapprox(vcha, vref; rtol=1e-10, atol=1e-10 * vsat)
+        end
+    end
+end
+
+@testset "fully-RE law: dead-ends switch off in the Inf limit" begin
+    # Reading V3 (dead-end on) then setting Ki_NADPH=Inf must equal the same tuple evaluated
+    # with the NADPH dead-end structurally absent (core law).
+    m   = _pgd_v3_mech()
+    logθ = -3 .+ 2 .* rand(length(free_params(m)))
+    mac = cha_macro_readoffs_PGD_fullRE(m, logθ; keq=0.079)
+    core = merge(mac, (; Ki_NADPH=Inf, Ki_ATP=Inf, Ki_ATP_EN=Inf))
+    pt = (; NADP=5e-6, PGA=8e-5, NADPH=2e-5)        # PGA·NADPH present: dead-end would bite
+    with_de    = cha_rate_PGD_fullRE(mac;  pt...)
+    without_de = cha_rate_PGD_fullRE(core; pt...)
+    @test with_de != without_de                     # the dead-end actually changed the rate
+    # And the core evaluation equals a from-scratch core tuple (no Ki_* fields at all).
+    bare = (; core.Kd_NADP, core.Kd_PGA, core.alpha, core.Kd_NADPH, core.Kd_Ru5P,
+              core.Kd_CO2, core.kf, core.kr, core.Et)
+    @test isapprox(cha_rate_PGD_fullRE(bare; pt...), without_de; rtol=1e-12)
+end
