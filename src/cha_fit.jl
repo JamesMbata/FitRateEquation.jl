@@ -73,6 +73,12 @@ _hk1_variant_alpha(variant::Symbol) =
     variant === :H3 ? Inf  :
     error("_hk1_variant_alpha: HK1 variant must be :H1, :H4, or :H3 (got $variant)")
 
+# Both fully-RE PGD variants (strict :full_re and the CO2/Ru5P dead-ends extension) share the
+# fiber-free (C=1) law path, the RE Haldane, and the cha_rate_PGD_fullRE dispatch. One predicate
+# guards them so :cha_base/G6PD/HK1 stay byte-identical (it returns the OLD truth value for every
+# pre-existing variant) and the dead-ends variant reuses the whole :full_re scaffolding.
+_is_pgd_fullre(variant::Symbol) = variant === :full_re || variant === :full_re_deadends
+
 # -----------------------------------------------------------------------------------------
 #   Free fit coordinates: the data-identifiable forward shape constants. EXCLUDES the gauge
 #   (kf, Et), the swept fiber (release_rate = koffQ / koff and its on-rate konQ / kon), and
@@ -91,7 +97,11 @@ function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy)
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EG,
              :Km_NADPH_rev]
     elseif enzyme === :PGD
-        return variant === :full_re ?
+        return variant === :full_re_deadends ?
+            # Fully-RE + free-E CO2/Ru5P dead-ends: the 6 core coords + the two competitive
+            # free-E dead-end constants (Ki_CO2/Ki_Ru5P — the _PGD_KI_MAP bare-term names).
+            [:Kd_NADP, :Kd_PGA, :alpha, :Kd_NADPH, :Kd_Ru5P, :Kd_CO2, :Ki_CO2, :Ki_Ru5P] :
+        variant === :full_re ?
             # Fully-RE (fiber-free): NO promoted-release fiber DOF, NO separate forward Ki_NADPH.
             # Kd_NADPH is the single competitive NADPH constant (Km_NADPH_rev ≡ Kd_NADPH); Kd_Ru5P
             # is a real RE coord. Effector coords (:Ki_ATP/:Ki_ATP_EN/:Ki_NADPH) are appended by
@@ -126,7 +136,7 @@ function cha_haldane_kr(enzyme::Symbol, coords::AbstractDict; keq::Real, release
     # Fully-RE PGD: no promoted-release fiber. Haldane comes straight from the RE dissociation
     # constants: kr = kf·Kd_NADPH·Kd_Ru5P·Kd_CO2 / (Keq·α·Kd_NADP·Kd_PGA). release_rate/release_eq
     # are inert here (fiber-free); they are accepted for signature parity with the cha_base call.
-    if enzyme === :PGD && variant === :full_re
+    if enzyme === :PGD && _is_pgd_fullre(variant)
         return coords[:Kd_NADPH] * coords[:Kd_Ru5P] * coords[:Kd_CO2] * kf /
                (coords[:Kd_NADP] * coords[:Kd_PGA] * coords[:alpha] * keq)
     end
@@ -202,7 +212,7 @@ function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
     # carried entirely by the Haldane kr; the product Kd's (Kd_NADPH/Kd_Ru5P/Kd_CO2) are real
     # coords. Mirrors the HK1 early-return so the generic release-fiber path below is untouched.
     # Effector dead-ends are appended ONLY when present as coords (default OFF → law uses Inf).
-    if enzyme === :PGD && variant === :full_re
+    if enzyme === :PGD && _is_pgd_fullre(variant)
         krv = kr === nothing ?
             cha_haldane_kr(enzyme, coords; keq=keq, release_rate=release_rate, kf=kf,
                            release_eq=release_eq, variant=variant) : kr
@@ -213,7 +223,7 @@ function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
                  Kd_Ru5P  = coords[:Kd_Ru5P],
                  Kd_CO2   = coords[:Kd_CO2],
                  kf = kf, kr = krv, Et = Et, Keq = keq)
-        for s in (:Ki_ATP, :Ki_ATP_EN, :Ki_NADPH)
+        for s in (:Ki_ATP, :Ki_ATP_EN, :Ki_NADPH, :Ki_CO2, :Ki_Ru5P)
             haskey(coords, s) && (tup = merge(tup, NamedTuple{(s,)}((coords[s],))))
         end
         return tup
@@ -280,8 +290,8 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
                                     kr::Union{Nothing,Real} = nothing,
                                     variant::Symbol = :_deploy)
     cha_rate_enz = enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
-                   enzyme === :PGD  ? (variant === :full_re ? ChaLaws.cha_rate_PGD_fullRE :
-                                                              ChaLaws.cha_rate_PGD) :
+                   enzyme === :PGD  ? (_is_pgd_fullre(variant) ? ChaLaws.cha_rate_PGD_fullRE :
+                                                                 ChaLaws.cha_rate_PGD) :
                    enzyme === :HK1  ? ChaLawsHK1.cha_rate_HK1 :
                    error("cha_centered_logratio_loss: unknown enzyme $enzyme")
     n = nrows(d)
@@ -429,7 +439,7 @@ function cha_apparent_km(enzyme::Symbol, coords::AbstractDict, which::Symbol;
         error("cha_apparent_km(:HK1): expected :Km_Glc or :Km_ATP (got $which)")
     end
     # Fully-RE PGD is fiber-free (HK1 precedent): C = 1, so apparent Km == alpha*Kd exactly.
-    C = (enzyme === :PGD && variant === :full_re) ? 1.0 : 1 + kf / release_rate
+    C = (enzyme === :PGD && _is_pgd_fullre(variant)) ? 1.0 : 1 + kf / release_rate
     kd = which === :Km_PGA  ? coords[:Kd_PGA] :
          which === :Km_NADP ? coords[:Kd_NADP] :
          which === :Km_G6P  ? coords[:Kd_G6P] :

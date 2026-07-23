@@ -33,6 +33,7 @@ using Test
     include("test_cha_pgd_laws.jl")
     include("test_cha_pgd_fullre_laws.jl")
     include("test_cha_pgd_fullre_deadends_laws.jl")
+    include("test_cha_pgd_fullre_deadends_fit.jl")
     include("test_pgd_data.jl")
     include("test_pgd_mechanisms.jl")
     include("test_pgd_outputs.jl")
