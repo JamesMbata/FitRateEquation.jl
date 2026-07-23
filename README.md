@@ -255,6 +255,12 @@ wired into the downstream simulation model. The full write-up of what it does
 and how it compares is in
 [`docs/pgd_fullre_evaluation.md`](docs/pgd_fullre_evaluation.md).
 
+A further additive variant, **`:full_re_deadends`**, extends `:full_re` with two
+rapid-equilibrium free-enzyme dead-ends (CO₂, Ru5P) so the law can fit Weisz 1985's
+NADPH-free single-product CO₂/Ru5P inhibition figures (6A–7B), which strict `:full_re`
+cannot. Run it with `run_pgd_fullre_deadends()`. It is likewise an evaluation variant —
+not deployed into the ODE model.
+
 ## 11. Going deeper
 
 This README covers everyday use. For the full model details — the exact rate

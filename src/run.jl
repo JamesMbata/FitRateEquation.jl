@@ -716,6 +716,22 @@ run_pgd_fullre(; outdir=nothing, smoke=false, nprocs=nothing) =
     _run_enzyme(pgd_config(), "PGD_fullre"; outdir, smoke, nprocs, variants=[:full_re])
 
 """
+    run_pgd_fullre_deadends(; outdir=nothing, smoke=false, nprocs=nothing)
+
+The fully-RE + free-E CO2/Ru5P dead-ends (`:full_re_deadends`) PGD variant: fits `run_all` with
+`variants=[:full_re_deadends]` (the `:full_re` core plus two competitive free-E dead-ends so CO2
+and Ru5P inhibit in the NADPH-free Weisz 1985 6A–7B single-product assays), across the three PGD
+modes. Fiber-free — the emitted `micro_parameters.jl` deploy block carries RE binding constants
+plus `K_CO2_E`/`K_Ru5P_E`, no `koff`/`kon`. Default `run_pgd` (the deployed `:cha_base`) and
+`run_pgd_fullre` are unchanged; this is a separate entry point. Default outdir is labeled
+`PGD_fullre_deadends_<date>[_smoke]`. DEPLOYMENT into PentosePhosphatePathway.jl remains out of
+scope; the coupled flux gate reads coupled behavior on a throwaway dev branch only.
+"""
+run_pgd_fullre_deadends(; outdir=nothing, smoke=false, nprocs=nothing) =
+    _run_enzyme(pgd_config(), "PGD_fullre_deadends"; outdir, smoke, nprocs,
+                variants=[:full_re_deadends])
+
+"""
     run_hk1(; outdir=nothing, smoke=false, nprocs=nothing)
 
 As `run_g6pd`, for HK1. Errors clearly if HK1 wiring is unavailable on this EnzymeRates

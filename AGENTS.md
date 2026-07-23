@@ -74,6 +74,13 @@ not deployed into `PentosePhosphatePathway.jl`. See
 [`docs/pgd_fullre_evaluation.md`](docs/pgd_fullre_evaluation.md) for the fit / CV /
 Holten findings and the α = 1 recommendation.
 
+A further additive variant **`:full_re_deadends`** (run: `run_pgd_fullre_deadends`) adds two
+rapid-equilibrium free-E dead-ends (CO₂, Ru5P; macro `Ki_CO2`/`Ki_Ru5P`) to `:full_re`, guarded
+by the shared `ChaFit._is_pgd_fullre(variant)` predicate. It fits the NADPH-free Weisz 1985 6A–7B
+single-product inhibition figures (every ordered CO₂/Ru5P term in `:full_re` carries a factor of
+NADPH and so vanishes at NADPH = 0); not deployed. `:cha_base`/G6PD/HK1 stay byte-identical. See
+[`docs/pgd_fullre_deadends_evaluation.md`](docs/pgd_fullre_deadends_evaluation.md).
+
 The numeric Cha laws are exactness-anchored against `EnzymeRates.rate_equation` for
 the real micro mechanism at **120/120 @ rtol 1e-10** — this exactness anchor is
 carried forward as the package's `test/test_cha_laws.jl` / `test_cha_pgd_laws.jl`
@@ -297,6 +304,7 @@ using FitRateEquation
 run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing)
 run_pgd(;  outdir=nothing, smoke=false, nprocs=nothing)
 run_pgd_fullre(; outdir=nothing, smoke=false, nprocs=nothing)   # additive :full_re PGD variant, not deployed
+run_pgd_fullre_deadends(; outdir=nothing, smoke=false, nprocs=nothing)   # :full_re + CO2/Ru5P dead-ends, not deployed
 run_hk1(;  outdir=nothing, smoke=false, nprocs=nothing)         # errors: HK1 guarded, see above
 run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
 ```

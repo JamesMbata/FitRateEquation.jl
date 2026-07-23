@@ -131,6 +131,30 @@ using Test, CSV, DataFrames, FitRateEquation, EnzymeRates
         # "full_re" is now in the variant->enzyme map, so a run dir need not sit under fitting/PGD/.
         @test FitRateEquation._VARIANT_TO_ENZYME["full_re"] == :PGD
     end
+
+    @testset "ChaAdapter numerics (PGD :full_re_deadends dispatches cha_rate_PGD_fullRE)" begin
+        # 8 coords: the 6 :full_re core + the two free-E dead-end constants. The adapter must
+        # evaluate through cha_rate_PGD_fullRE and honor Ki_CO2/Ki_Ru5P (competitive at NADPH=0).
+        coords = Dict(:Kd_NADP=>1e-5, :Kd_PGA=>4e-5, :alpha=>1.0, :Kd_NADPH=>1e-6,
+                      :Kd_Ru5P=>5e-5, :Kd_CO2=>1e-4, :Ki_CO2=>3e-4, :Ki_Ru5P=>2e-4)
+        a = FitRateEquation.build_cha_adapter(:PGD, coords, :full_re_deadends, 0.17)
+        @test a.enzyme === :PGD && a.variant === :full_re_deadends
+        # A Weisz-6A-like row: CO2 present, NADPH=Ru5P=0 -> the CO2 dead-end must bite.
+        concs  = (NADP = 1e-5, PGA = 5e-5, Ru5P = 0.0, CO2 = 1e-3, NADPH = 0.0, ATP = 0.0)
+        concs0 = (NADP = 1e-5, PGA = 5e-5, Ru5P = 0.0, CO2 = 0.0,  NADPH = 0.0, ATP = 0.0)
+        v  = EnzymeRates.rate_equation(a, concs,  (Keq = 0.17, E_total = 1.0))
+        v0 = EnzymeRates.rate_equation(a, concs0, (Keq = 0.17, E_total = 1.0))
+        @test isfinite(v) && v > 0.0
+        @test v < v0                                          # CO2 inhibits at NADPH=0 (the point)
+        # Matches a direct cha_rate_PGD_fullRE call at the DEPLOY-fiber macro tuple.
+        m_ref = FitRateEquation.ChaFit.cha_macro_tuple(:PGD, coords;
+                    keq = 0.17, release_rate = FitRateEquation.ChaFit.CHA_DEPLOY_RELEASE_RATE,
+                    variant = :full_re_deadends)
+        v_ref = FitRateEquation.ChaLaws.cha_rate_PGD_fullRE(m_ref;
+                    NADP = 1e-5, PGA = 5e-5, Ru5P = 0.0, CO2 = 1e-3, NADPH = 0.0, ATP = 0.0)
+        @test v ≈ v_ref rtol=1e-12
+        @test FitRateEquation._VARIANT_TO_ENZYME["full_re_deadends"] == :PGD
+    end
 end
 
 @testset "plot stub errors without CairoMakie" begin

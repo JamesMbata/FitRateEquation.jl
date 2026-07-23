@@ -25,3 +25,15 @@ end
     @test occursin("full_re_mode1_K_NADPH_E", mp)      # fiber-free deploy succeeded
     @test !occursin("koff_Ru5P_ENADPH", mp)            # no SS-release fiber param emitted
 end
+
+@testset "run_pgd_fullre_deadends smoke writes artifacts (deploy block has K_CO2_E/K_Ru5P_E)" begin
+    out = mktempdir()
+    res = run_pgd_fullre_deadends(smoke=true, nprocs=1, outdir=out)
+    @test res !== nothing
+    @test all(r -> r.variant === :full_re_deadends, res)
+    @test Set(r.mode for r in res) == Set((:mode1, :mode2, :mode3))
+    mp = read(joinpath(out, "micro_parameters.jl"), String)
+    @test occursin("full_re_deadends_mode1_K_CO2_E", mp)     # dead-end deploy succeeded
+    @test occursin("full_re_deadends_mode1_K_Ru5P_E", mp)
+    @test !occursin("koff_Ru5P_ENADPH", mp)                  # fiber-free
+end
