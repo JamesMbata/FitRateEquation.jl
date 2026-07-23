@@ -467,14 +467,14 @@ function _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
     end
     coords_dict = Dict(coords_syms .=> 10 .^ u)
     L = cha_centered_logratio_loss(enzyme, mech, d, coords_dict; keq=keq, variant=variant)
-    L += _cha_anchor_penalty(enzyme, coords_dict, anchors)
+    L += _cha_anchor_penalty(enzyme, coords_dict, anchors; variant=variant)
     L
 end
 
 # Additive soft-anchor penalty on the apparent Michaelis constants. For each `which =>
 # (target, weight)` in `anchors`, adds weight*(log10(apparent_Km) - target)^2. anchors=nothing
 # (or empty) contributes EXACTLY 0.0 -- the base centered-loss arithmetic is untouched.
-function _cha_anchor_penalty(enzyme, coords_dict, anchors)
+function _cha_anchor_penalty(enzyme, coords_dict, anchors; variant::Symbol=:_deploy)
     anchors === nothing && return 0.0
     pen = 0.0
     for (which, spec) in anchors
@@ -484,7 +484,7 @@ function _cha_anchor_penalty(enzyme, coords_dict, anchors)
         # deployed apparent Km ~(C_fit/C_deploy)x the target -- ~2x for PGD Km_PGA. Re-anchored
         # on the deploy fiber 2026-06-15 so a PGD consensus deploy lands Km_PGA on the literature
         # band, not 2x it; this is a re-fit -- Mode-2/3 PGD results change, Mode-1 is unaffected.)
-        km = cha_apparent_km(enzyme, coords_dict, which)   # release_rate defaults to CHA_DEPLOY_RELEASE_RATE
+        km = cha_apparent_km(enzyme, coords_dict, which; variant=variant)   # release_rate defaults to CHA_DEPLOY_RELEASE_RATE; :full_re => C=1
         pen += spec.weight * (log10(km) - spec.target)^2
     end
     pen
