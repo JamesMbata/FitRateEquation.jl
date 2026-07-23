@@ -84,7 +84,7 @@ function _deploy_micro_map(enzyme::Symbol, coords::AbstractDict; release_rate::R
     # K_NADP_EPGA = alpha*Kd_NADP. The effector dead-ends map from the optional coords when present
     # (V1 carries both ATP dead-ends; :K_NADPH_EPGA is a V3-only slot; the effectors-off :full_re
     # mechanism carries none of them, so all three haskey-guards no-op there).
-    if enzyme === :PGD && variant === :full_re
+    if enzyme === :PGD && ChaFit._is_pgd_fullre(variant)
         micro = Dict{Symbol,Float64}(
             :K_NADP_E         => coords[:Kd_NADP],
             :K_PGA_E          => coords[:Kd_PGA],
@@ -96,6 +96,8 @@ function _deploy_micro_map(enzyme::Symbol, coords::AbstractDict; release_rate::R
         haskey(coords, :Ki_ATP)    && (micro[:K_ATPinh_E]     = coords[:Ki_ATP])
         haskey(coords, :Ki_ATP_EN) && (micro[:K_ATPinh_ENADP] = coords[:Ki_ATP_EN])
         haskey(coords, :Ki_NADPH)  && (micro[:K_NADPH_EPGA]   = coords[:Ki_NADPH])
+        haskey(coords, :Ki_CO2)    && (micro[:K_CO2_E]        = coords[:Ki_CO2])   # CO2 dead-end on free E
+        haskey(coords, :Ki_Ru5P)   && (micro[:K_Ru5P_E]       = coords[:Ki_Ru5P])  # Ru5P dead-end on free E
         return micro
     end
     konv = release_rate / release_eq
