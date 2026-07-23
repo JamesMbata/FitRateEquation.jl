@@ -117,6 +117,7 @@ function cha_micro_from_macro_G6PD(mac; koffQ::Real)
 end
 
 export cha_macro_readoffs_PGD, cha_micro_from_macro_PGD
+export cha_macro_readoffs_PGD_fullRE
 
 # Bind the PGD :cha_base Cha symbols to their upstream semantic names by SHAPE (as for G6PD):
 # (a) catalysis kf (unique `k_*_to_*` = gauge) + Haldane reverse kr (the other `k_*_to_*`);
@@ -198,6 +199,37 @@ function cha_micro_from_macro_PGD(mac; k_off_Ru5P::Real = mac.koff)
        Keq = get(mac, :Keq, NaN),
        Km_NADP_apparent = get(mac, :Km_NADP_apparent, NaN),
        Km_PGA_apparent  = get(mac, :Km_PGA_apparent, NaN))
+end
+
+# Read a Cha macro tuple off the FULLY-RE PGD micro mechanism (:RE_rate_eq / V3). Unlike
+# cha_macro_readoffs_PGD (cha_base), there is NO promoted SS-release fiber: every product
+# release is an RE dissociation constant, so C = 1 and there are no koff/kon symbols. The
+# product-side constants are read directly (K_NADPH_E, K_Ru5P_ENADPH, K_CO2_ENADPHRu5P);
+# alpha comes from the ternary K_NADP_EPGA = alpha*Kd_NADP. Dead-ends default to Inf when the
+# mechanism does not carry them (:RE_rate_eq has both ATP, no NADPH; V3 adds K_NADPH_EPGA).
+function cha_macro_readoffs_PGD_fullRE(m, logθ; keq::Real)
+    vals = FitRateEquation._micro_values(m, logθ; keq=keq)
+    _need(s) = haskey(vals, s) ? vals[s] :
+        error("cha_macro_readoffs_PGD_fullRE: micro param $s absent (upstream rename?)")
+
+    # Catalysis gauge kf + Haldane reverse kr, bound by shape (as _pgd_cha_symbols).
+    kf_sym = gauge_param(m)
+    kr_sym = _only_sym(_cha_all_ksyms(m), s -> _is_kto(s) && s != kf_sym,
+                       "reverse chemistry rate")
+
+    Kd_NADP  = _need(:K_NADP_E)             # E + NADP
+    Kd_PGA   = _need(:K_PGA_E)              # E + PGA
+    Kd_NADPH = _need(:K_NADPH_E)            # E + NADPH (competitive; = reverse-release Km)
+    Kd_Ru5P  = _need(:K_Ru5P_ENADPH)       # Ru5P on E·NADPH (RE, no koff/kon)
+    Kd_CO2   = _need(:K_CO2_ENADPHRu5P)     # CO2 on E·NADPH·Ru5P (RE)
+    alpha    = _need(:K_NADP_EPGA) / Kd_NADP    # ternary: K_NADP_EPGA = alpha*Kd_NADP
+
+    (; Kd_NADP, Kd_PGA, alpha, Kd_NADPH, Kd_Ru5P, Kd_CO2,
+       kf = vals[kf_sym], kr = vals[kr_sym], Et = vals[:E_total],
+       Ki_ATP    = get(vals, :K_ATPinh_E,     Inf),   # ATP on free E
+       Ki_ATP_EN = get(vals, :K_ATPinh_ENADP, Inf),   # ATP on E·NADP
+       Ki_NADPH  = get(vals, :K_NADPH_EPGA,   Inf),   # NADPH on E·PGA (V3 only)
+       Keq = get(vals, :Keq, NaN))
 end
 
 end # module ChaInvert

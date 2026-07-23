@@ -39,3 +39,41 @@ end
     half     = cha_rate_PGD_fullRE(m; NADP=m.Kd_NADP, PGA=Bsat)   # A = Kd_NADP
     @test isapprox(half, Vmax_app/2; rtol=1e-3)
 end
+
+using FitRateEquation.ChaInvert
+
+# The registered fully-RE PGD mechanism (:RE_rate_eq = V1): random RE substrate binding,
+# catalysis SS, CO2/Ru5P/NADPH releases all RE. Carries both ATP dead-ends, no NADPH dead-end.
+function _pgd_re_mech()
+    vs = FitRateEquation.consensus_variants(:PGD)
+    vs[findfirst(v -> Symbol(v.name) === :RE_rate_eq, vs)].mech
+end
+
+@testset "exactness gate: cha_rate_PGD_fullRE == rate_equation (:RE_rate_eq, rtol 1e-10)" begin
+    m    = _pgd_re_mech()
+    mets = EnzymeRates.metabolites(m)           # (:NADP,:PGA,:CO2,:NADPH,:Ru5P,:ATP)
+    grid = [
+        (; NADP=5e-6, PGA=40e-6, CO2=0.0,  Ru5P=0.0,  NADPH=0.0,  ATP=0.0),
+        (; NADP=5e-6, PGA=40e-6, CO2=1e-4, Ru5P=0.0,  NADPH=0.0,  ATP=0.0),
+        (; NADP=5e-6, PGA=40e-6, CO2=0.0,  Ru5P=5e-5, NADPH=0.0,  ATP=0.0),
+        (; NADP=5e-6, PGA=40e-6, CO2=0.0,  Ru5P=0.0,  NADPH=5e-6, ATP=0.0),
+        (; NADP=5e-6, PGA=40e-6, CO2=1e-4, Ru5P=5e-5, NADPH=5e-6, ATP=0.0),
+        (; NADP=2e-5, PGA=80e-6, CO2=2e-4, Ru5P=1e-4, NADPH=8e-6, ATP=5e-4),
+    ]
+    for _ in 1:20
+        free = free_params(m)
+        logθ = -3 .+ 2 .* rand(length(free))
+        keq  = 0.079
+        mac  = cha_macro_readoffs_PGD_fullRE(m, logθ; keq=keq)
+        # Characteristic forward rate: floor for the rel-error denominator.
+        vsat = abs(EnzymeRates.rate_equation(m,
+            NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:PGA) ? 1e-2 : 0.0 for s in mets)),
+            build_params(m, logθ; keq=keq)))
+        for conc in grid
+            cc   = NamedTuple{Tuple(mets)}(Tuple(getfield(conc, s) for s in mets))
+            vref = EnzymeRates.rate_equation(m, cc, build_params(m, logθ; keq=keq))
+            vcha = cha_rate_PGD_fullRE(mac; conc...)
+            @test isapprox(vcha, vref; rtol=1e-10, atol=1e-10 * vsat)
+        end
+    end
+end
