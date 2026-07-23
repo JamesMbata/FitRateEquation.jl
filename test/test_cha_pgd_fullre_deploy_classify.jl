@@ -116,3 +116,27 @@ end
     @test cco2.class === :literature_pinned
     @test isapprox(cco2.value, 1e-4; rtol=1e-8)
 end
+
+_p3_fullre_mech() = (vs = FitRateEquation.consensus_variants(:PGD);
+                     vs[findfirst(v -> Symbol(v.name) === :full_re, vs)].mech)
+
+@testset "cha_deploy_micro round-trips the registered :full_re core mech (rtol 1e-9)" begin
+    m = _p3_fullre_mech()                    # effectors-off core: 6 RE free_params
+    mets = EnzymeRates.metabolites(m)
+    Random.seed!(5)
+    for _ in 1:8
+        logθ = -3 .+ 2 .* rand(length(free_params(m))); keq = 0.079
+        mac = cha_macro_readoffs_PGD_fullRE(m, logθ; keq=keq)
+        coords = Dict(s => getfield(mac, s) for s in cha_coords(:PGD, :full_re))   # 6 core only
+        logθd = cha_deploy_micro(:PGD, m, coords; keq=keq, variant=:full_re)
+        bp = build_params(m, logθd; keq=keq)
+        vsat = abs(EnzymeRates.rate_equation(m,
+            NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:PGA) ? 1e-2 : 0.0 for s in mets)), bp))
+        for conc in [(;NADP=5e-6,PGA=40e-6,Ru5P=1e-4,CO2=1e-4,NADPH=5e-6),
+                     (;NADP=2e-5,PGA=80e-6,Ru5P=2e-4,CO2=2e-4,NADPH=8e-6)]
+            cc = NamedTuple{Tuple(mets)}(Tuple(get(conc, s, 0.0) for s in mets))
+            @test isapprox(EnzymeRates.rate_equation(m, cc, bp),
+                           cha_rate_PGD_fullRE(mac; conc...); rtol=1e-9, atol=1e-9*vsat)
+        end
+    end
+end

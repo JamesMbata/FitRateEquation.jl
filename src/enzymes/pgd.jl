@@ -72,6 +72,23 @@ function _pgd_cha_base()
     ], extra); regs=[:ATP])
 end
 
+# Fully-RE CORE (:full_re): V1's topology (random RE substrate binding, SS catalysis gauge,
+# ordered RE product release CO2->Ru5P->NADPH) with the ATP dead-end effectors OFF (the
+# config-gated default of the fully-RE law). free_params = the 6 RE dissociation constants only
+# (no K_ATPinh_*), so the :full_re fit's 6 core coords map bijectively (cha_deploy_micro branch).
+function _pgd_fullre_core()
+    _mech([:NADP, :PGA], [:Ru5P, :CO2, :NADPH], [
+        ([:E, :NADP],   [:E_N],  :(⇌)),               # NADP binds free E   ┐ random
+        ([:E, :PGA],    [:E_G],  :(⇌)),               # PGA binds free E    │ substrate
+        ([:E_N, :PGA],  [:E_NB], :(⇌)),               # PGA binds E·NADP    │ binding
+        ([:E_G, :NADP], [:E_NB], :(⇌)),               # NADP binds E·PGA    ┘
+        ([:E_NB],       [:E_C],  :(<-->)),            # catalysis (forced SS, gauge anchor)
+        ([:E_C], [:E_1, :CO2],   :(⇌)),               # CO2 release  (RE, first out)
+        ([:E_1], [:E_2, :Ru5P],  :(⇌)),               # Ru5P release (RE)
+        ([:E_2], [:E, :NADPH],   :(⇌)),               # NADPH release (RE, last)
+    ]; regs=Symbol[])
+end
+
 const _PGD_KI_MAP = Dict{MonoKey,Symbol}(
     [:Ru5P  => 1] => :Ki_Ru5P,
     [:CO2   => 1] => :Ki_CO2,
@@ -106,7 +123,8 @@ register_enzyme!(EnzymeWiring(
     [(name=:RE_rate_eq,               mech=_pgd_consensus(:(⇌), :(⇌))),
      (name=:SS_NADPH_release_rate_eq, mech=_pgd_consensus(:(<-->), :(<-->))),
      (name=Symbol("+NADPH_deadend_rate_eq"), mech=_pgd_v3()),
-     (name=:cha_base, mech=_pgd_cha_base())],
+     (name=:cha_base, mech=_pgd_cha_base()),
+     (name=:full_re,  mech=_pgd_fullre_core())],
     Dict{Symbol,Float64}(
         :Ki_ATP => log10(1.7e-3),
         :Km_PGA => log10(38e-6),   # lit low-end of the 38–80 µM band (Mode-3 override; provisional)
