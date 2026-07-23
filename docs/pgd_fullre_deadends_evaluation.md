@@ -81,16 +81,32 @@ release) is **not required** on the fit evidence.
 
 ## Identifiability & CV — the one honest caveat
 
-Leave-one-**article**-out CV does **not** improve and slightly rises (mode 1: `:full_re` 0.117 ±
-0.043 → `:full_re_deadends` 0.199 ± 0.059). This is the expected single-article geometry, **not** a
-generalization failure of the mechanism: `Ki_CO2`/`Ki_Ru5P` are identifiable **only** from Weisz
-1985 (the single article with CO₂/Ru5P titrations). On every non-Weisz fold the dead-end terms are
-silent (CO₂ = Ru5P = 0), so the prediction equals `:full_re`; only when **Weisz itself is held out**
-do the two constants go unconstrained, and the extra DOF then costs on that one fold. This is the
-same single-fold information geometry that governs α (Phase-3 eval) and the `Ki_CO2` non-identifiability
-under leave-Weisz-out (`[[project_pgd_t1g_cv_root_cause]]`). The dead-ends are a Weisz-identified
-*feature that makes 6A–7B fittable* — the in-sample fit and the direct structural test are the
-decisive metrics, and both pass.
+Leave-one-**article**-out CV does **not** improve and rises (mode 1: `:full_re` 0.126 →
+`:full_re_deadends` 0.198). A full-budget **per-fold decomposition** (`n_restarts = 48`) localizes
+the entire gap to the **two CO₂/Ru5P-bearing articles** — the five CO₂/Ru5P-free articles are flat:
+
+| held-out article | `:full_re` | `:full_re_deadends` | Δ | % of CV gap |
+|---|---|---|---|---|
+| **Villet1972** (reverse, all products) | 0.096 | 0.455 | **+0.359** | **71%** |
+| **Weisz1985** (forward, NADPH = 0) | 0.126 | 0.241 | **+0.115** | **23%** |
+| Cottreau1975 | 0.058 | 0.106 | +0.048 | 10% |
+| Akkemik/Chan/Pearse/Ceyhan | — | — | −0.018 net | −4% |
+
+So the CV degradation is a **corpus-grouping** effect (94% from the 2 CO₂/Ru5P articles), but it is
+**not** solely the Weisz coverage gap I first attributed it to. **Two distinct mechanisms:**
+1. **Leave-Weisz-out (+0.11, 23%)** — the pure single-article identifiability gap: no forward
+   CO₂/Ru5P training data ⇒ `Ki_CO2`/`Ki_Ru5P` rail ⇒ held-out Weisz predicted worse than `:full_re`'s
+   flat guess. Same geometry as α and `[[project_pgd_t1g_cv_root_cause]]`.
+2. **Leave-Villet-out (+0.36, 71% — the dominant term)** — a **forward→reverse transfer failure**:
+   Villet's reverse rows carry CO₂ **and** Ru5P, so the dead-end terms are **active** there; fit to
+   Weisz's *forward* NADPH-free data, they **mis-transfer** and *worsen* the reverse prediction
+   (0.096 → 0.455). This is not a mere coverage gap — it is a genuine open question about whether the
+   free-E dead-end **form** is right for the reverse arm, and is the subject of **Phase 4.5** (the
+   agent-team adjudication of "different rate law vs reevaluate the CV metric";
+   `docs/superpowers/plans/2026-07-23-pgd-fullre-phase4.5-villet-cv-agent-team.md` in PPP_Experiments).
+
+The in-sample fit and the direct structural test (Weisz 6A–7B) are the decisive Phase-4 metrics and
+both pass; the Villet CV transfer is flagged, not dismissed, and handed to Phase 4.5.
 
 ## α = 1 deploy form (for the coupled flux gate)
 
