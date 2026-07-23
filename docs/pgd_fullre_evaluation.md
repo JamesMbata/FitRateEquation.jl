@@ -118,6 +118,35 @@ classic graphical assignments that treat each product's inhibition independently
 dead-ends (`:Ki_ATP`/`:Ki_NADPH`) are OFF by default and were not needed: `[ATP] = 0` throughout
 the corpus, and the NADPH E·6PG dead-end is the LOOCV-refuted term (PGD Problem 5).
 
+### Known limitation — Weisz 1985 6A–7B CO₂/Ru5P single-product inhibition (structural)
+
+The same ordered-release structure that makes NADPH the sole free-E competitor also makes the law
+**unable to reproduce the Weisz 1985 CO₂ (6A–6D) and Ru5P (7A–7B) product-inhibition figures**, and
+this is **structural, not a parameter artifact**. Those assays titrate CO₂ (0→2200 µM) or Ru5P
+(0→400/1080 µM) with **NADPH = 0** (and the other product = 0) — a single-product inhibition design.
+In the law, CO₂ appears *only* in `Q·R·C/(…)` and Ru5P *only* in `Q·R/(…)` and `Q·R·C/(…)`; every
+CO₂/Ru5P term carries a factor of NADPH (`Q`). With `Q = 0` those terms vanish identically, so the
+predicted rate is **flat across CO₂/Ru5P level** while the data fall ~2.3× (CO₂, 6A) / ~1.6× (Ru5P,
+7A). All conditions in each figure collapse onto one trajectory.
+
+This is **not** the fitted `Kd_CO2` (11 mM) or the unconstrained `Kd_Ru5P`: setting `Kd_CO2 → 10⁻⁹ M`
+(10⁷× tighter) leaves the CO₂ = 2200 µM rate **bit-identical** to CO₂ = 0, because the term's
+numerator (`Q·R·C`) is exactly zero when `Q = 0`. `Kd_CO2` is pinned only by the reverse Villet 1972
+rows (all products present); `Kd_Ru5P` is unconstrained precisely because the forward corpus never
+supplies the NADPH needed to activate its terms. NADPH inhibition (Weisz 5A/5B) *is* captured (NADPH
+is the last-released product ⇒ free-E competitor), and the reverse Villet 1972 panels *do* separate by
+CO₂ (there NADPH/Ru5P/CO₂ are co-substrates) — the law reproduces product inhibition exactly when the
+partner products are present, and only then.
+
+**Biochemical reading:** Weisz's single-product CO₂/Ru5P inhibition is direct evidence that PGD
+product release is **not strictly ordered** — CO₂ and Ru5P inhibit while binding free/partial enzyme
+forms (dead-end complexes, or random release), which the strictly-ordered `:full_re` law forbids by
+construction. Addressing it is a **mechanism** change, deferred to follow-up phases: **Phase 4** adds
+CO₂/Ru5P free-E dead-end terms (fittable single-product inhibition, +2 params); **Phase 5** relaxes to
+random product release. This limitation does not affect the forward-flux deployment target (the
+forward corpus does not constrain CO₂/Ru5P free-E binding regardless), but it is the honest boundary
+of the ordered law.
+
 ## Verdict
 
 - **Fits the corpus better than `cha_base`** — CV 8–11× lower with a tighter SE, fewer parameters.
@@ -127,6 +156,9 @@ the corpus, and the NADPH E·6PG dead-end is the LOOCV-refuted term (PGD Problem
   `cha_base` requires. ✅ (This is the validation target the law exists for.)
 - **Correct product-inhibition fingerprint** — NADPH competitive vs both substrates; Ru5P/CO₂
   conditional on later products. ✅
+- **Cannot fit Weisz 6A–7B single-product CO₂/Ru5P inhibition** — structural (those assays have
+  NADPH = 0, so the ordered CO₂/Ru5P terms vanish); not a parameter artifact. ⚠️ Deferred to
+  Phase 4 (CO₂/Ru5P dead-ends) / Phase 5 (random release). Does not affect the forward-flux target.
 - **α is the one soft direction** — the corpus does not support a distinct α. **Deploy α = 1**
   (single-site RE): ~4% loss cost, rescues Kd_Ru5P, lands Km_NADP in the human band. Keep α-free
   as a diagnostic only.
