@@ -432,7 +432,8 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
             try
                 logθ = ChaDeploy.cha_deploy_micro(enzyme, res.r.mech, res.r.fit.coords; keq=keq,
                                                   koffQ=ChaFit.CHA_DEPLOY_RELEASE_RATE,
-                                                  release_rate=ChaFit.CHA_DEPLOY_RELEASE_RATE)
+                                                  release_rate=ChaFit.CHA_DEPLOY_RELEASE_RATE,
+                                                  variant=res.variant)
             catch err
                 println(io, "# --- $(res.variant) [$(res.mode)] : deploy unavailable ($(err)) ---")
             end
@@ -661,6 +662,19 @@ end
 As `run_g6pd`, for PGD.
 """
 run_pgd(;  outdir=nothing, smoke=false, nprocs=nothing) = _run_enzyme(pgd_config(),  "PGD";  outdir, smoke, nprocs)
+
+"""
+    run_pgd_fullre(; outdir=nothing, smoke=false, nprocs=nothing)
+
+The fully-RE (`:full_re`) PGD variant: fits `run_all` with `variants=[:full_re]` (V1's
+random-RE-binding / ordered-RE-release topology with the ATP effectors OFF), across the three
+PGD modes. Fiber-free — the emitted `micro_parameters.jl` deploy block carries RE binding
+constants, no `koff`/`kon`. Default `run_pgd` (the deployed `:cha_base`) is unchanged; this is a
+separate entry point. Default outdir is labeled `PGD_fullre_<date>[_smoke]`. DEPLOYMENT into
+PentosePhosphatePathway.jl remains out of scope — this run produces the evaluation artifacts.
+"""
+run_pgd_fullre(; outdir=nothing, smoke=false, nprocs=nothing) =
+    _run_enzyme(pgd_config(), "PGD_fullre"; outdir, smoke, nprocs, variants=[:full_re])
 
 """
     run_hk1(; outdir=nothing, smoke=false, nprocs=nothing)

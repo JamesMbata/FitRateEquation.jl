@@ -3,3 +3,7 @@ Manifest.toml
 *.cov
 
 /.worktrees/
+
+# Pipeline run outputs (macro_constants.csv, micro_parameters.jl, report.md, plots/, …).
+# run_g6pd/run_pgd/run_pgd_fullre/… write here; generated, never version-controlled.
+/results/

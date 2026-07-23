@@ -224,9 +224,29 @@ your terminal to check, and download a newer release from
 
 **`run_hk1()` throws an error:** this is expected — HK1 support is not yet
 available in this release (the underlying mechanism hasn't been ported over
-yet). `run_g6pd`, `run_pgd`, and `run_g6pd_noatp` are fully available.
+yet). `run_g6pd`, `run_pgd`, `run_g6pd_noatp`, and `run_pgd_fullre` are fully
+available.
 
-## 10. Going deeper
+## 10. An alternative PGD rate law (`:full_re`)
+
+Alongside the default PGD fit, the package includes an alternative,
+experimental rate equation for PGD called `:full_re` (a "fully
+rapid-equilibrium" form). You run it the same way as any other fit:
+
+```julia
+using FitRateEquation
+run_pgd_fullre()          # add smoke=true for a fast plumbing check
+```
+
+It writes the same six output files as `run_pgd`, into a folder labeled
+`PGD_fullre_...`. On the built-in data it generalizes to unseen papers
+noticeably better than the default PGD law and better captures how the product
+NADPH slows the enzyme down. It is an **evaluation variant only** — it is not
+wired into the downstream simulation model. The full write-up of what it does
+and how it compares is in
+[`docs/pgd_fullre_evaluation.md`](docs/pgd_fullre_evaluation.md).
+
+## 11. Going deeper
 
 This README covers everyday use. For the full model details — the exact rate
 equation being fit, what's held fixed versus what's fit from data, the

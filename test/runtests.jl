@@ -11,8 +11,10 @@ using Test
     include("test_cha_laws.jl")
     include("test_cha_invert.jl")
     include("test_cha_fit.jl")
+    include("test_cha_pgd_fullre_fit.jl")
     include("test_cha_classify.jl")
     include("test_cha_deploy.jl")
+    include("test_cha_pgd_fullre_deploy_classify.jl")
     include("test_cha_koffq.jl")
     include("test_cha_silence.jl")
     include("test_cha_noatp.jl")
@@ -29,6 +31,7 @@ using Test
     include("test_cli.jl")
     # PGD
     include("test_cha_pgd_laws.jl")
+    include("test_cha_pgd_fullre_laws.jl")
     include("test_pgd_data.jl")
     include("test_pgd_mechanisms.jl")
     include("test_pgd_outputs.jl")
