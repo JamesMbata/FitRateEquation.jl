@@ -85,6 +85,7 @@ function cha_rate_G6PD(m; NADP=0.0, G6P=0.0, NADPH=0.0, PGLn=0.0, ATP=0.0, BPG=0
 end
 
 export cha_rate_PGD
+export cha_rate_PGD_fullRE
 
 # =========================================================================================
 #         Cha-form partial-equilibrium PGD rate law (Topham Bi-Ter, base-only)
@@ -155,6 +156,65 @@ function cha_rate_PGD(m; NADP=0.0, PGA=0.0, Ru5P=0.0, CO2=0.0, NADPH=0.0, ATP=0.
 
     # rate = Et * (v/E) / (Et/E);  Et/E = D_pool + S/E.
     return Et * v_over_E / (D_pool + S_over_E)
+end
+
+# =========================================================================================
+#     Cha-form FULLY-RAPID-EQUILIBRIUM PGD rate law (only catalysis is steady-state)
+# =========================================================================================
+#
+# Random RE substrate binding + ordered product release CO2 -> Ru5P -> NADPH, with the
+# SINGLE steady-state step being catalysis (the gauge). Unlike `cha_rate_PGD` (cha_base),
+# there is NO promoted SS-release fiber (no koff/kon, no super-node): every product release
+# is a rapid-equilibrium dissociation. NADPH is released LAST, so on the reverse/rebind side
+# it binds FREE E first => the bare-[NADPH] term is a COMPETITIVE product-inhibition term
+# (Kd_NADPH), which also serves as the reverse-release Km (one constant, both directions).
+# Ru5P binds only E·NADPH (Kd_Ru5P); CO2 binds only E·NADPH·Ru5P (Kd_CO2). The product
+# central complex E·CO2·Ru5P·NADPH carries the reverse arm.
+#
+#   A = NADP, B = PGA (6-phosphogluconate), Q = NADPH, R = Ru5P, C = CO2.
+#   kf = catalysis fwd (gauge=1), kr = catalysis rev (Haldane-determined by the caller).
+#   Keq is carried for provenance only; the reverse arm is fully determined by kr.
+#
+# Optional config-gated dead-ends (default absent => Inf => term vanishes; the fit/readoff
+# supply them only when the mechanism carries them): Ki_ATP (ATP on free E), Ki_ATP_EN (ATP
+# on E·NADP), Ki_NADPH (NADPH on E·PGA, the forward cross-term). These are identical in form
+# to cha_rate_PGD's dead-ends and independent of the RE-vs-SS release change.
+function cha_rate_PGD_fullRE(m; NADP=0.0, PGA=0.0, Ru5P=0.0, CO2=0.0, NADPH=0.0, ATP=0.0)
+    A = NADP; B = PGA; Q = NADPH; R = Ru5P; Cc = CO2
+
+    Kd_NADP  = m.Kd_NADP
+    Kd_PGA   = m.Kd_PGA
+    alpha    = m.alpha
+    Kd_NADPH = m.Kd_NADPH       # competitive free-E NADPH constant (= reverse-release Km)
+    Kd_Ru5P  = m.Kd_Ru5P
+    Kd_CO2   = m.Kd_CO2
+    kf       = m.kf
+    kr       = m.kr
+    Et       = m.Et
+
+    Ki_ATP    = hasproperty(m, :Ki_ATP)    ? m.Ki_ATP    : Inf   # ATP dead-end on free E
+    Ki_ATP_EN = hasproperty(m, :Ki_ATP_EN) ? m.Ki_ATP_EN : Inf   # ATP dead-end on E·NADP
+    Ki_NADPH  = hasproperty(m, :Ki_NADPH)  ? m.Ki_NADPH  : Inf   # NADPH dead-end on E·PGA
+
+    # Forward-competent ternary fraction (relative to free E).
+    gAB = A * B / (alpha * Kd_NADP * Kd_PGA)
+
+    # Partition function (relative to free E). Substrate side + ordered-RE product side (nested,
+    # NADPH last) + config-gated dead-ends.
+    D = 1.0 +
+        A / Kd_NADP +
+        B / Kd_PGA +
+        gAB +
+        Q / Kd_NADPH +                                  # E·NADPH (competitive)
+        Q * R / (Kd_NADPH * Kd_Ru5P) +                  # E·NADPH·Ru5P
+        Q * R * Cc / (Kd_NADPH * Kd_Ru5P * Kd_CO2) +    # E·NADPH·Ru5P·CO2 (product central)
+        ATP / Ki_ATP +                                  # ATP dead-end on free E
+        (A / Kd_NADP) * (ATP / Ki_ATP_EN) +             # ATP dead-end on E·NADP
+        (B / Kd_PGA) * (Q / Ki_NADPH)                   # NADPH dead-end on E·PGA (fwd Ki)
+
+    # Net flux through the single SS catalytic step: kf*[E·NADP·PGA] - kr*[E·CO2·Ru5P·NADPH].
+    num = kf * gAB - kr * Q * R * Cc / (Kd_NADPH * Kd_Ru5P * Kd_CO2)
+    return Et * num / D
 end
 
 end # module ChaLaws
