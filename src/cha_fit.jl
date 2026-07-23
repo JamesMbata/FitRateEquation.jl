@@ -91,8 +91,14 @@ function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy)
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EG,
              :Km_NADPH_rev]
     elseif enzyme === :PGD
-        return [:Kd_NADP, :Kd_PGA, :alpha, :Kd_CO2, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EN,
-                :Km_NADPH_rev]
+        return variant === :full_re ?
+            # Fully-RE (fiber-free): NO promoted-release fiber DOF, NO separate forward Ki_NADPH.
+            # Kd_NADPH is the single competitive NADPH constant (Km_NADPH_rev ≡ Kd_NADPH); Kd_Ru5P
+            # is a real RE coord. Effector coords (:Ki_ATP/:Ki_ATP_EN/:Ki_NADPH) are appended by
+            # the config only when the dead-ends are enabled (default OFF).
+            [:Kd_NADP, :Kd_PGA, :alpha, :Kd_NADPH, :Kd_Ru5P, :Kd_CO2] :
+            [:Kd_NADP, :Kd_PGA, :alpha, :Kd_CO2, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EN,
+             :Km_NADPH_rev]
     elseif enzyme === :HK1
         # H4 reparameterizes the two G6P dissociation constants {Ki_G6P_C, Ki_G6P_N} into the
         # data-identifiable pair {Keff, split_ratio}, where Keff = 1/(1/Kc+1/Kn) (effective G6P
@@ -115,7 +121,15 @@ end
 #     PGD  -> KdRu (Ru5P-release equilibrium, distinct from Km_NADPH_rev).
 # -----------------------------------------------------------------------------------------
 function cha_haldane_kr(enzyme::Symbol, coords::AbstractDict; keq::Real, release_rate::Real,
-                        kf::Real, release_eq::Real = _default_release_eq(enzyme, coords))
+                        kf::Real, release_eq::Real = _default_release_eq(enzyme, coords),
+                        variant::Symbol = :_deploy)
+    # Fully-RE PGD: no promoted-release fiber. Haldane comes straight from the RE dissociation
+    # constants: kr = kf·Kd_NADPH·Kd_Ru5P·Kd_CO2 / (Keq·α·Kd_NADP·Kd_PGA). release_rate/release_eq
+    # are inert here (fiber-free); they are accepted for signature parity with the cha_base call.
+    if enzyme === :PGD && variant === :full_re
+        return coords[:Kd_NADPH] * coords[:Kd_Ru5P] * coords[:Kd_CO2] * kf /
+               (coords[:Kd_NADP] * coords[:Kd_PGA] * coords[:alpha] * keq)
+    end
     if enzyme === :G6PD
         # Keq_app = Kd_6PGLn * Km_NADPH_rev * kf / (Kd_NADP * Kd_G6P * alpha * kr).
         # release_eq == Km_NADPH_rev on the G6PD fiber.
@@ -183,6 +197,26 @@ function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
                   K_Pi_N   = coords[:K_Pi_N],
                   alpha    = _hk1_variant_alpha(variant),
                   Keq = keq, kf = kf, k2f = kf, Et = Et)   # k2f == kf == 1: Pi competitor-only
+    end
+    # PGD fully-RE variant: NO promoted SS-release fiber (no koff/kon; C=1). The reverse arm is
+    # carried entirely by the Haldane kr; the product Kd's (Kd_NADPH/Kd_Ru5P/Kd_CO2) are real
+    # coords. Mirrors the HK1 early-return so the generic release-fiber path below is untouched.
+    # Effector dead-ends are appended ONLY when present as coords (default OFF → law uses Inf).
+    if enzyme === :PGD && variant === :full_re
+        krv = kr === nothing ?
+            cha_haldane_kr(enzyme, coords; keq=keq, release_rate=release_rate, kf=kf,
+                           release_eq=release_eq, variant=variant) : kr
+        tup = (; Kd_NADP  = coords[:Kd_NADP],
+                 Kd_PGA   = coords[:Kd_PGA],
+                 alpha    = coords[:alpha],
+                 Kd_NADPH = coords[:Kd_NADPH],
+                 Kd_Ru5P  = coords[:Kd_Ru5P],
+                 Kd_CO2   = coords[:Kd_CO2],
+                 kf = kf, kr = krv, Et = Et, Keq = keq)
+        for s in (:Ki_ATP, :Ki_ATP_EN, :Ki_NADPH)
+            haskey(coords, s) && (tup = merge(tup, NamedTuple{(s,)}((coords[s],))))
+        end
+        return tup
     end
     krv = kr === nothing ?
         cha_haldane_kr(enzyme, coords; keq=keq, release_rate=release_rate, kf=kf,
