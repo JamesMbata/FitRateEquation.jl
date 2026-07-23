@@ -93,6 +93,44 @@ using Test, DataFrames, FitRateEquation, EnzymeRates
                     NADP = 0.0, G6P = 0.0, NADPH = 1e-4, PGLn = 1e-4, ATP = 0.0)
         @test vB ≈ vB_ref rtol=1e-12
     end
+
+    @testset "ChaAdapter numerics (PGD :full_re dispatches cha_rate_PGD_fullRE)" begin
+        # :full_re coords (Run A mode1). The adapter must evaluate through cha_rate_PGD_fullRE,
+        # NOT cha_rate_PGD -- the fiber-free full-RE law over its 6 core coords.
+        coords = Dict(:Kd_NADP=>2.4638e-6, :Kd_PGA=>1.3504e-5, :alpha=>13.569,
+                      :Kd_NADPH=>8.7249e-7, :Kd_Ru5P=>4.6517e-5, :Kd_CO2=>0.011088)
+        a = FitRateEquation.build_cha_adapter(:PGD, coords, :full_re, 0.17)
+        @test a.enzyme === :PGD && a.variant === :full_re
+        @test Set(EnzymeRates.metabolites(a)) == Set([:NADP,:PGA,:Ru5P,:CO2,:NADPH,:ATP])
+
+        concs = (NADP = 3e-5, PGA = 2e-4, Ru5P = 0.0, CO2 = 0.0, NADPH = 0.0, ATP = 0.0)
+        v = EnzymeRates.rate_equation(a, concs, (Keq = 0.17, E_total = 1.0))
+        @test isfinite(v) && v > 0.0
+        # Matches a direct cha_rate_PGD_fullRE call at the DEPLOY-fiber full_re macro tuple.
+        m_ref = FitRateEquation.ChaFit.cha_macro_tuple(:PGD, coords;
+                    keq = 0.17, release_rate = FitRateEquation.ChaFit.CHA_DEPLOY_RELEASE_RATE,
+                    variant = :full_re)
+        v_ref = FitRateEquation.ChaLaws.cha_rate_PGD_fullRE(m_ref;
+                    NADP = 3e-5, PGA = 2e-4, Ru5P = 0.0, CO2 = 0.0, NADPH = 0.0, ATP = 0.0)
+        @test v ≈ v_ref rtol=1e-12
+
+        # ADDITIVE GUARD: a :cha_base PGD adapter still dispatches cha_rate_PGD (unchanged).
+        cb = Dict(:Kd_NADP=>3e-6, :Kd_PGA=>1.5e-5, :alpha=>2.0, :Kd_CO2=>1e-4,
+                  :Ki_NADPH=>1.7e-5, :Ki_ATP=>1.7e-3, :Ki_ATP_EN=>1e-6, :Km_NADPH_rev=>2e-5)
+        acb = FitRateEquation.build_cha_adapter(:PGD, cb, :cha_base, 0.17)
+        vcb = EnzymeRates.rate_equation(acb, concs, (Keq = 0.17, E_total = 1.0))
+        mcb = FitRateEquation.ChaFit.cha_macro_tuple(:PGD, cb;
+                    keq = 0.17, release_rate = FitRateEquation.ChaFit.CHA_DEPLOY_RELEASE_RATE,
+                    variant = :cha_base)
+        vcb_ref = FitRateEquation.ChaLaws.cha_rate_PGD(mcb;
+                    NADP = 3e-5, PGA = 2e-4, Ru5P = 0.0, CO2 = 0.0, NADPH = 0.0, ATP = 0.0)
+        @test vcb ≈ vcb_ref rtol=1e-12
+    end
+
+    @testset "detect_enzyme maps the :full_re variant to PGD" begin
+        # "full_re" is now in the variant->enzyme map, so a run dir need not sit under fitting/PGD/.
+        @test FitRateEquation._VARIANT_TO_ENZYME["full_re"] == :PGD
+    end
 end
 
 @testset "plot stub errors without CairoMakie" begin
