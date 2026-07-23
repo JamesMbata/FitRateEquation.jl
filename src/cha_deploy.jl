@@ -57,7 +57,7 @@ export cha_deploy_micro
 # release equilibrium (koff/kon): G6PD -> Km_NADPH_rev, PGD -> KdRu. The on-rate kon = k7r is
 # release_rate / release_eq.
 function _deploy_micro_map(enzyme::Symbol, coords::AbstractDict; release_rate::Real,
-                           release_eq::Real, mech=nothing)
+                           release_eq::Real, mech=nothing, variant::Symbol = :_deploy)
     if enzyme === :HK1
         # free_params role order (Task 0): [k2f, Kd_Glc, Kd_ATP, Ki_G6P_C, Ki_ADP, K_Pi_N, Ki_G6P_N].
         # k1f is the gauge (dropped from free_params); k2f is hard-gauged to 1.0 (Pi competitor-only).
@@ -77,6 +77,26 @@ function _deploy_micro_map(enzyme::Symbol, coords::AbstractDict; release_rate::R
         vals = (1.0, coords[:Kd_Glc], coords[:Kd_ATP], KiC,
                 coords[:Ki_ADP], coords[:K_Pi_N], KiN)
         return Dict{Symbol,Float64}(fp[i] => vals[i] for i in 1:7)
+    end
+    # PGD fully-RE (fiber-free): map the 6 core RE dissociation constants straight to the RE
+    # binding free-params — NO koff/kon fiber (release_rate/release_eq inert here, accepted only
+    # for signature parity, exactly like the HK1 branch above). Detailed balance fixes the ternary:
+    # K_NADP_EPGA = alpha*Kd_NADP. The effector dead-ends map from the optional coords when present
+    # (V1 carries both ATP dead-ends; :K_NADPH_EPGA is a V3-only slot; the effectors-off :full_re
+    # mechanism carries none of them, so all three haskey-guards no-op there).
+    if enzyme === :PGD && variant === :full_re
+        micro = Dict{Symbol,Float64}(
+            :K_NADP_E         => coords[:Kd_NADP],
+            :K_PGA_E          => coords[:Kd_PGA],
+            :K_NADP_EPGA      => coords[:alpha] * coords[:Kd_NADP],
+            :K_NADPH_E        => coords[:Kd_NADPH],       # competitive free-E NADPH (= reverse-release Km)
+            :K_Ru5P_ENADPH    => coords[:Kd_Ru5P],        # Ru5P on E·NADPH (RE, no koff/kon)
+            :K_CO2_ENADPHRu5P => coords[:Kd_CO2],         # CO2 on E·NADPH·Ru5P (RE)
+        )
+        haskey(coords, :Ki_ATP)    && (micro[:K_ATPinh_E]     = coords[:Ki_ATP])
+        haskey(coords, :Ki_ATP_EN) && (micro[:K_ATPinh_ENADP] = coords[:Ki_ATP_EN])
+        haskey(coords, :Ki_NADPH)  && (micro[:K_NADPH_EPGA]   = coords[:Ki_NADPH])
+        return micro
     end
     konv = release_rate / release_eq
     if enzyme === :G6PD
@@ -130,8 +150,10 @@ function cha_deploy_micro(enzyme::Symbol, mech, coords::AbstractDict; keq::Real,
                           koffQ::Real = 1.0,
                           release_rate::Real = koffQ,
                           release_eq::Real = ChaFit._default_release_eq(enzyme, coords),
-                          kr::Union{Nothing,Real} = nothing)
-    micro = _deploy_micro_map(enzyme, coords; release_rate=release_rate, release_eq=release_eq, mech=mech)
+                          kr::Union{Nothing,Real} = nothing,
+                          variant::Symbol = :_deploy)
+    micro = _deploy_micro_map(enzyme, coords; release_rate=release_rate, release_eq=release_eq,
+                              mech=mech, variant=variant)
     fp = free_params(mech)
     logθ = Vector{Float64}(undef, length(fp))
     for (i, s) in enumerate(fp)

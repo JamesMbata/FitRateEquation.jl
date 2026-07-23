@@ -14,6 +14,7 @@ using Test
     include("test_cha_pgd_fullre_fit.jl")
     include("test_cha_classify.jl")
     include("test_cha_deploy.jl")
+    include("test_cha_pgd_fullre_deploy_classify.jl")
     include("test_cha_koffq.jl")
     include("test_cha_silence.jl")
     include("test_cha_noatp.jl")
