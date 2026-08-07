@@ -32,29 +32,12 @@ function _to_float(x, default::Float64=0.0)
 end
 
 "Load a Dataset from a config: read CSV, drop zero/blank/non-finite rates, convert
- µM->M, build per-row concs/group/keq. Group key is Article|Fig."
-function load_dataset(cfg)
-    df = CSV.read(cfg.data_csv, DataFrame)
-    metsyms = collect(keys(cfg.metabolites))
-    # One concrete row type per config's metabolite key set (G6PD/PGD/HK1 etc. each get
-    # their own `T` -- this is NOT a single global type).
-    T = NamedTuple{Tuple(metsyms), NTuple{length(metsyms),Float64}}
-    concs = T[]; rate = Float64[]; grp = String[]; keq = Float64[]
-    for row in eachrow(df)
-        r = _to_float(row[cfg.rate_col], NaN)
-        (isfinite(r) && r != 0.0) || continue   # drop zero / blank / non-finite rates
-        vals = map(metsyms) do s
-            col, unit = cfg.metabolites[s]
-            x = _to_float(row[col], 0.0)         # missing concentrations -> 0.0
-            unit === :uM ? x / 1e6 : x
-        end
-        push!(concs, T(Tuple(vals)))
-        push!(rate, r)
-        push!(grp, string(row[cfg.article_col], "|", row[cfg.fig_col]))
-        push!(keq, _to_float(row[cfg.keq_col], NaN))
-    end
-    Dataset(concs, rate, grp, keq)
-end
+ µM->M, build per-row concs/group/keq. Group key is Article|Fig.
+
+ Thin composition of `read_corpus` (CSV -> canonical DataFrame) and `dataset_from_corpus`.
+ Signature and values are unchanged; the split exists so `run_all` can snapshot the exact
+ rows it fit (`fit_corpus.csv`) without a second, drift-prone loader."
+load_dataset(cfg) = dataset_from_corpus(read_corpus(cfg), cfg)
 
 "Read the corpus CSV into the canonical fit DataFrame: one Molar column per metabolite
  symbol, plus Rate / source (Article|Fig) / Apparent_Keq, with zero, blank and non-finite

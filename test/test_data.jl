@@ -39,9 +39,14 @@ end
     @test df.Apparent_Keq[1] ≈ 43.743
     @test df.X_axis_label[1] == "NADP"
 
-    # DIFFERENTIAL CHECK: the composition reproduces the ORIGINAL load_dataset
-    # field-by-field on every bundled corpus. This is the load-bearing assertion of
-    # this task -- load_dataset is still its own implementation at this commit.
+    # DIFFERENTIAL CHECK: the composition reproduces `load_dataset` field-by-field on
+    # every bundled corpus. As of Task 2 `load_dataset` IS this composition, so both
+    # sides run the same code path and this is trivially true today. KEEP IT ANYWAY --
+    # it is a regression guard, not a tautology: it fires the moment anyone reintroduces
+    # a second, independent corpus-loading implementation behind `load_dataset`, which is
+    # the exact drift this branch exists to remove. (The evidence that values did not move
+    # at the Task 2 commit is test_byte_identity.jl, which compares against a fixture
+    # generated before the refactor.)
     for c in (g6pd_config(), pgd_config(), hk1_config())
         ref = load_dataset(c)
         got = FitRateEquation.dataset_from_corpus(FitRateEquation.read_corpus(c), c)
