@@ -3,3 +3,5 @@ Manifest.toml
 *.cov
 
 /.worktrees/
+/docs/
+/.superpowers/
