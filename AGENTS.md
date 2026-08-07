@@ -134,7 +134,7 @@ E_H  ⇌ E + NADPH        (SS — promoted NADPH release; super-node {E_C ⇌ E_
 
 ### PGD — random-binding / ordered-release Bi-Ter (Topham 1986)
 
-`NADP + PGA (6PG) ⇌ CO2 + Ru5P + NADPH`. King-Altman skeleton (`src/enzymes/pgd.jl`):
+`NADP + PGA ⇌ CO2 + Ru5P + NADPH`. King-Altman skeleton (`src/enzymes/pgd.jl`):
 
 ```
 E + NADP   ⇌ E_N        ┐ random substrate binding
@@ -171,7 +171,7 @@ budget:
 - **PGD:** the forward cross-term de-conflation was **refuted** on this corpus
   (Mode 1 reports `Ki_NADPH` diagnostic/unconstrained), so it is **pin-only** 17 µM
   (Cottreau) in Modes 2/3. `Km_PGA` is **not data-identified** — `alpha` rails to its
-  bound (the corpus lacks sub-Km [6PG] coverage), so the apparent Km is anchored, not
+  bound (the corpus lacks sub-Km [PGA] coverage), so the apparent Km is anchored, not
   recovered. The high/unstable PGD leave-one-article-out CV traces to a
   **forward-CO₂ product-inhibition coverage gap** (the leave-Weisz1985-out fold);
   trimmed CV ≈ G6PD's.
