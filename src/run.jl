@@ -284,7 +284,8 @@ function run_all(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_
     meta = (n_restarts=n_restarts, maxiter=maxiter, maxtime=maxtime, seed=seed,
             n_rows=nrows(d), anchor_reverse=anchor_reverse, variants=variants)
     write_outputs(outdir, d, results; meta=meta, name=String(cfg.name), enzyme=enzyme,
-                 deploy_keq=deploy_keq, anchor_reverse=anchor_reverse)
+                 deploy_keq=deploy_keq, anchor_reverse=anchor_reverse,
+                 corpus=corpus, data_csv=cfg.data_csv)
     results
 end
 
@@ -314,7 +315,8 @@ end
 # is a `[sources]`-pinned dependency that DOES live in a real git checkout in typical dev
 # setups, so its SHA is still meaningful there; `_git_sha` is kept for it, with the same
 # stderr suppression applied.
-function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=nothing)
+function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=nothing,
+                           data_csv::Union{Nothing,AbstractString}=nothing)
     open(joinpath(outdir, "provenance.toml"), "w") do io
         println(io, "# FitRateEquation run provenance (auto-written)")
         println(io, "timestamp       = \"$(Libc.strftime("%Y-%m-%dT%H:%M:%S%z", time()))\"")
@@ -327,6 +329,10 @@ function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=noth
         println(io, "seed            = $(meta.seed)")
         println(io, "n_rows          = $(meta.n_rows)")
         deploy_keq === nothing || println(io, "deploy_keq      = $(deploy_keq)")
+        # Where the corpus came from. Traceability only — fit_corpus.csv, not this path,
+        # is what the plotter reads (a path is a pointer; the file it names can move or
+        # change after the run, a snapshot cannot).
+        data_csv === nothing || println(io, "data_csv        = \"$(abspath(data_csv))\"")
         # Self-describing run: record the reverse-anchor state and the fitted variant(s) so a
         # conflated (anchor_reverse=false) diagnostic run dir is never mistaken for a deploy run.
         hasproperty(meta, :anchor_reverse) &&
@@ -380,8 +386,15 @@ end
 
 function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G6PD",
                        enzyme::Symbol=:G6PD, deploy_keq::Real=median(d.keq),
-                       anchor_reverse::Bool=true)
-    meta === nothing || _write_provenance(outdir, d, meta; deploy_keq=deploy_keq)
+                       anchor_reverse::Bool=true,
+                       corpus::Union{Nothing,DataFrame}=nothing,
+                       data_csv::Union{Nothing,AbstractString}=nothing)
+    meta === nothing || _write_provenance(outdir, d, meta; deploy_keq=deploy_keq,
+                                          data_csv=data_csv)
+    # fit_corpus.csv — the EXACT rows fit (post-row_filter, Molar), so the plotter reads
+    # the corpus back instead of re-deriving it from a config it cannot see. A run dir
+    # written without it is not plottable; see plot_consensus_fit.
+    corpus === nothing || CSV.write(joinpath(outdir, "fit_corpus.csv"), corpus)
     keq = deploy_keq
     # macro_constants.csv (keyed by variant × mode): the classed cha_coords PLUS the derived
     # apparent Michaelis constants (Km_G6P / Km_PGA), so downstream readers see the named
