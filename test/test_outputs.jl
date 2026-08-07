@@ -104,6 +104,9 @@ end
     fc = CSV.read(joinpath(outdir, "fit_corpus.csv"), DataFrame)
 
     # THE REGRESSION: the snapshot is the corpus that was passed in, not the default.
+    # nrow > 0 first — `all` over an empty collection is true, so an empty snapshot would
+    # otherwise satisfy both of the next two assertions.
+    @test nrow(fc) > 0
     @test all(a -> a in keep, first.(split.(string.(fc.source), "|")))
     @test nrow(fc) < nrow(bundled)
 

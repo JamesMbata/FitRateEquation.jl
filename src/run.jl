@@ -256,7 +256,10 @@ end
  anchor-optional ablations (`_G6PD_ANCHOR_OPTIONAL_VARIANTS`), `true` otherwise. Explicitly
  passing `false` for a variant that still requires the anchor (the deploy variant,
  `:RE_rate_eq`) reproduces the conflating fit and marks that variant's output NOT DEPLOYABLE.
- No-op for PGD/HK1 (no always-on reverse anchor)."
+ No-op for PGD/HK1 (no always-on reverse anchor).
+ `row_filter` is a `DataFrame -> DataFrame` function applied to `read_corpus`'s output before
+ the `Dataset` is built, so the rows it keeps are exactly the rows fit and the rows written to
+ `fit_corpus.csv` (`drop_atp_rows` is the bundled example)."
 function run_all(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_000_000,
                  maxtime::Real=20.0, seed::Int=1,
                  variants::Vector{Symbol}=run_variants(Symbol(cfg.name)),
@@ -569,7 +572,7 @@ function _write_pgd_km_pga_block(io, results)
                     "unanchored Mode-1 apparent Km_PGA (", round(km1*1e6; sigdigits=3), " µM) ",
                     "differs from the literature-anchored Mode-2 value (",
                     round(km2*1e6; sigdigits=3), " µM) by ", round(gap; sigdigits=3),
-                    " dex. The corpus pulls Km_PGA high (it lacks sub-Km [6PG] coverage); the ",
+                    " dex. The corpus pulls Km_PGA high (it lacks sub-Km [PGA] coverage); the ",
                     "38–80 µM band is imposed via the anchor (Mode 2/3), not recovered from data.\n")
     catch err
         println(io, "> Km_PGA gap report unavailable ($(err))\n")
@@ -641,7 +644,7 @@ end
     run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true)
 
 Run the deploy-variant × mode consensus macro-constant extraction for G6PD end-to-end and
-write the six artifacts (macro_constants.csv, goodness_of_fit.csv,
+write the seven artifacts (macro_constants.csv, goodness_of_fit.csv, fit_corpus.csv,
 identifiable_functions.csv, micro_parameters.jl, report.md, provenance.toml) to `outdir`
 (default: `./results/G6PD_<date>[_smoke]`). `smoke=true` uses a tiny fit budget for a fast
 sanity check. `nprocs` overrides the local worker-count default (see `setup_workers`); a

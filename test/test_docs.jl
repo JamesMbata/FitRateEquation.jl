@@ -8,4 +8,10 @@ using Test
     @test occursin("AGENTS.md", readme)
     @test !occursin("ConsensusMacro", agents)
     @test !occursin("run from the repo root", agents)   # repo-root rule removed
+
+    # 0.2.0 artifact + contract changes must be documented, not just implemented.
+    @test occursin("fit_corpus.csv", readme)
+    @test occursin("fit_corpus.csv", agents)
+    @test occursin("read_fit_corpus", agents)    # the helper that replaced build_plot_df
+    @test occursin("seven artifacts", agents)    # was six
 end

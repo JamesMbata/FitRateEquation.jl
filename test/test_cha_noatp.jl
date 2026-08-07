@@ -128,6 +128,10 @@ end
                    source = ["A|1", "A|1", "A|1"],
                    Apparent_Keq = [13.7, 13.7, 13.7])
     df2 = FitRateEquation.drop_atp_rows(df)
+    # Must be a materialized DataFrame, not a view: `dataset_from_corpus(df::DataFrame, …)`
+    # would MethodError on a SubDataFrame, so a `subset(…; view=true)` rewrite would keep
+    # every other assertion here green while breaking `run_all`.
+    @test df2 isa DataFrame
     @test nrow(df2) == 2
     @test all(df2.ATP .<= 0.0)
     @test df2.Rate == [1.0, 1.2]

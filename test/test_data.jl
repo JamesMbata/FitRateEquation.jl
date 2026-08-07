@@ -44,9 +44,12 @@ end
     # sides run the same code path and this is trivially true today. KEEP IT ANYWAY --
     # it is a regression guard, not a tautology: it fires the moment anyone reintroduces
     # a second, independent corpus-loading implementation behind `load_dataset`, which is
-    # the exact drift this branch exists to remove. (The evidence that values did not move
-    # at the Task 2 commit is test_byte_identity.jl, which compares against a fixture
-    # generated before the refactor.)
+    # the exact drift this branch exists to remove. (The in-repo evidence that the loaded
+    # VALUES did not move is elsewhere in this file: the literal first-row assertions above
+    # -- source/concs/rate/Keq/X_axis_label pinned to the corpus by hand -- and the
+    # "read_corpus drop predicate (fixture corpus)" testset below. Not test_byte_identity.jl:
+    # by default that compares only variant/mode/name, with value/class/ci behind an opt-in
+    # env var, so it does not gate loaded values on a normal run.)
     for c in (g6pd_config(), pgd_config(), hk1_config())
         ref = load_dataset(c)
         got = FitRateEquation.dataset_from_corpus(FitRateEquation.read_corpus(c), c)

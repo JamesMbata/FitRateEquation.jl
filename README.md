@@ -77,7 +77,7 @@ produce publication-quality numbers. Drop `smoke=true` (or set it to `false`)
 for the full, slower fit.
 
 When it finishes, you'll find a new folder under `./results/` (something like
-`results/G6PD_2026-07-16_smoke/`) containing **six files** — the fitted
+`results/G6PD_2026-07-16_smoke/`) containing **seven files** — the fitted
 constants, goodness-of-fit statistics, and a human-readable report. See
 [Understanding the outputs](#6-understanding-the-outputs) below for what each
 one means.
@@ -122,11 +122,15 @@ deeper reference in [`AGENTS.md`](AGENTS.md).
 
 ## 6. Understanding the outputs
 
-Every run writes six files to its output folder:
+Every run writes seven files to its output folder:
 
 - **`macro_constants.csv`** — the headline result: the fitted binding/inhibition
   constants (Km, Kd, Ki) for the enzyme, with each one labeled as
   data-derived, taken from the literature, or unconstrained by the data.
+- **`fit_corpus.csv`** — the exact measurements this run was fitted to, saved
+  alongside the result. If you pointed the fitter at your own data file, or had
+  it skip some rows, this is what it actually used — and it's what the plots are
+  drawn against.
 - **`goodness_of_fit.csv`** — how well the fitted equation matches the data,
   including a cross-validation score computed by holding out one paper's data
   at a time.
@@ -160,6 +164,11 @@ your results folder. Plotting only works after `CairoMakie` has been loaded
 fitting, since it's a large dependency you only need if you want pictures.
 Plotting currently works for G6PD and PGD results only.
 
+The plots are drawn against the `fit_corpus.csv` saved inside the results folder,
+so they always show the data the fit actually used. Results folders produced by
+versions before 0.2.0 don't contain that file and can't be plotted — re-run the
+fit if you have an old one.
+
 ## 8. Command line
 
 If you'd rather run a fit from your terminal than from inside Julia,
@@ -191,7 +200,7 @@ And the flags:
 |---|---|
 | `--smoke` | Use the fast, low-budget fit (same as `smoke=true`) |
 | `--nprocs N` | Use `N` worker processes for the fit |
-| `--outdir DIR` | Write the run's six output files into `DIR` |
+| `--outdir DIR` | Write the run's seven output files into `DIR` |
 | `--data CSV` | Fit your own CSV instead of the built-in corpus (only with `g6pd-noatp`) |
 
 For example, to fit PGD at full budget and put the results in a folder called

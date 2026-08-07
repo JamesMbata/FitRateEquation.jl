@@ -31,7 +31,7 @@ function _pgd_consensus(ru5p_op::Symbol, nadph_op::Symbol)
 end
 
 # V3 forward de-conflation: NADPH binds the E·PGA form [:E_G] as a rapid-equilibrium
-# DEAD-END (its own micro-K, pendant node). On E·PGA ⇒ noncompetitive vs 6PG
+# DEAD-END (its own micro-K, pendant node). On E·PGA ⇒ noncompetitive vs PGA
 # (Cottreau/Weisz). The free-E dead-end (E·NADPH) is DROPPED (2026-06-10, mirroring the
 # G6PD option-B change): it is the REVERSE of the productive NADPH release and lumps the
 # bare-[NADPH] competitive coeff into a 2-knob term (release + dead-end). With only the
