@@ -69,3 +69,34 @@ end
         end
     end
 end
+
+@testset "read_corpus drop predicate (fixture corpus)" begin
+    # The bundled corpora drop zero rows, so they cannot exercise the rate filter.
+    # This fixture carries one row per drop path plus two survivors.
+    csv = """
+    [NADP] (uM),[G6P] (uM),[NADPH] (uM),[PGLn] (uM),[ATP] (uM),Rate_V,Article,Fig,X_axis_label,Apparent_Keq
+    1,200,0,0,0,15.33,Wang2002,1A,NADP,43.743
+    2,200,0,0,0,0,Wang2002,1A,NADP,43.743
+    3,200,0,0,0,,Wang2002,1A,NADP,43.743
+    4,200,0,0,0,n/a,Wang2002,1A,NADP,43.743
+    5,,0,0,0,-2.5,Wang2002,1B,NADP,43.743
+    """
+    path = joinpath(mktempdir(), "fixture_corpus.csv")
+    write(path, csv)
+    cfg = g6pd_config(; data_csv=path)
+
+    df = FitRateEquation.read_corpus(cfg)
+    @test nrow(df) == 2                       # zero, blank and non-numeric rates dropped
+    @test df.Rate == [15.33, -2.5]            # negative (reverse) rates SURVIVE
+    @test df.source == ["Wang2002|1A", "Wang2002|1B"]
+    @test df.NADP == [1e-6, 5e-6]             # surviving rows keep their own values
+    @test df.G6P[2] == 0.0                    # blank concentration cell -> 0.0
+
+    # The differential check, on a corpus that actually drops rows.
+    ref = load_dataset(cfg)
+    got = FitRateEquation.dataset_from_corpus(df, cfg)
+    @test nrows(got) == nrows(ref) == 2
+    @test got.concs == ref.concs
+    @test got.rate  == ref.rate
+    @test got.group == ref.group
+end
