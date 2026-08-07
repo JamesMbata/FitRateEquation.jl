@@ -7,8 +7,8 @@
 # package extension: it loads ONLY when CairoMakie is loaded alongside FitRateEquation, and
 # it implements the `FitRateEquation.plot_consensus_fit` stub (defined unconditionally in the
 # main module). All non-Makie helpers (detect_enzyme, config_for, read_coords,
-# build_cha_adapter, build_plot_df) live in the main module (src/plot_support.jl); this file
-# calls them by qualified name and contains ONLY CairoMakie-dependent code.
+# build_cha_adapter, read_fit_corpus) live in the main module (src/plot_support.jl); this
+# file calls them by qualified name and contains ONLY CairoMakie-dependent code.
 #
 # Predictions come from the DEPLOYED Cha law: the fitted macro constants are read from
 # <run_dir>/macro_constants.csv, assembled with FitRateEquation.ChaFit.cha_macro_tuple at
@@ -16,7 +16,7 @@
 # ChaAdapter defined in plot_support.jl.
 #
 # HK1 is scoped out: its corpus has no X_axis_label column (needed to pick each panel's
-# swept metabolite), so detecting :HK1 and calling build_plot_df raises a clear error.
+# swept metabolite), so read_fit_corpus raises a clear error on an HK1 run dir.
 # ##########################################################################################
 
 module FitRateEquationMakieExt
@@ -238,7 +238,10 @@ function FitRateEquation.plot_consensus_fit(run_dir::AbstractString)
     println("Results dir: $run_dir")
     println("Enzyme: $enzyme")
 
-    df = FitRateEquation.build_plot_df(cfg)   # errors here for HK1 (no X_axis_label)
+    # The rows this run ACTUALLY fit — not a re-derivation from `cfg`, which cannot see a
+    # custom data_csv or row_filter. Errors for HK1 (no X_axis_label) and for pre-0.2.0
+    # run dirs (no snapshot).
+    df = FitRateEquation.read_fit_corpus(run_dir)
     println("Data: $(nrow(df)) rows, $(length(unique(df.source))) source figures")
 
     mc = CSV.read(mc_file, DataFrame)
