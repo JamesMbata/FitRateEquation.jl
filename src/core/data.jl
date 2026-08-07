@@ -55,3 +55,38 @@ function load_dataset(cfg)
     end
     Dataset(concs, rate, grp, keq)
 end
+
+"Read the corpus CSV into the canonical fit DataFrame: one Molar column per metabolite
+ symbol, plus Rate / source (Article|Fig) / Apparent_Keq, with zero, blank and non-finite
+ rate rows dropped. `X_axis_label` is carried through when the corpus has it (G6PD/PGD do;
+ HK1 does not) — the per-figure plot renderer needs it, the fit does not.
+
+ This is the SINGLE corpus loader: `load_dataset` and the plotter's snapshot both come from
+ it, so they cannot drift apart."
+function read_corpus(cfg)
+    raw = CSV.read(cfg.data_csv, DataFrame)
+    df  = DataFrame()
+    for s in collect(keys(cfg.metabolites))
+        col, unit = cfg.metabolites[s]
+        vals = _to_float.(raw[!, col], 0.0)      # missing concentrations -> 0.0
+        df[!, s] = unit === :uM ? vals ./ 1e6 : vals
+    end
+    df.Rate         = _to_float.(raw[!, cfg.rate_col], NaN)
+    df.source       = string.(raw[!, cfg.article_col], "|", raw[!, cfg.fig_col])
+    df.Apparent_Keq = _to_float.(raw[!, cfg.keq_col], NaN)
+    hasproperty(raw, :X_axis_label) && (df.X_axis_label = string.(raw[!, "X_axis_label"]))
+    filter!(r -> isfinite(r.Rate) && r.Rate != 0.0, df)   # same drop as load_dataset
+    return df
+end
+
+"Build a Dataset from a canonical corpus DataFrame (the output of `read_corpus`, optionally
+ row-filtered). Rebuilds the same concretely-typed row NamedTuple vector `load_dataset`
+ built, so `d.concs` stays concrete and loss evaluation does not fall back to dynamic
+ dispatch."
+function dataset_from_corpus(df::DataFrame, cfg)
+    metsyms = collect(keys(cfg.metabolites))
+    T = NamedTuple{Tuple(metsyms), NTuple{length(metsyms),Float64}}
+    concs = T[T(Tuple(Float64(row[s]) for s in metsyms)) for row in eachrow(df)]
+    Dataset(concs, Vector{Float64}(df.Rate), Vector{String}(df.source),
+            Vector{Float64}(df.Apparent_Keq))
+end
