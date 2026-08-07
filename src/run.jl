@@ -159,10 +159,14 @@ _cells(enzyme::Symbol=:G6PD; variants::Vector{Symbol}=run_variants(enzyme)) =
 #   Row filter for the ATP-free fit: drop any row carrying ATP (ATP > 0). The :no_atp law
 #   is ATP-blind, so ATP-inhibited rows would become forced-misfit residuals biasing the
 #   core constants. Used by run_g6pd_noatp.jl as run_all's `row_filter`.
+#
+#   Row filters operate on the canonical corpus DataFrame (read_corpus's output), NOT on
+#   the Dataset, so the rows that survive are exactly the rows snapshotted to
+#   fit_corpus.csv. A corpus with no ATP column passes through unchanged.
 # ---------------------------------------------------------------------------------------
-function drop_atp_rows(d::Dataset)
-    keep = [i for i in 1:nrows(d) if get(d.concs[i], :ATP, 0.0) <= 0.0]
-    Dataset(d.concs[keep], d.rate[keep], d.group[keep], d.keq[keep])
+function drop_atp_rows(df::DataFrame)
+    hasproperty(df, :ATP) || return df
+    filter(r -> r.ATP <= 0.0, df)
 end
 
 # Flat list of independent fit-tasks across all cells: one `:main` per cell, then one
@@ -259,7 +263,10 @@ function run_all(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_
                  row_filter=identity,
                  anchor_reverse::Bool=_default_anchor_reverse(Symbol(cfg.name), variants))
     enzyme = Symbol(cfg.name)
-    d = row_filter(load_dataset(cfg))
+    # Load once, filter as a DataFrame, then build the Dataset from exactly those rows —
+    # so `corpus` IS the fitted corpus and can be snapshotted verbatim to fit_corpus.csv.
+    corpus = row_filter(read_corpus(cfg))
+    d      = dataset_from_corpus(corpus, cfg)
     deploy_keq = cfg.deploy_keq
     mkpath(outdir)
     cells = _cells(enzyme; variants=variants)

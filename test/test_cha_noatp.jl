@@ -5,6 +5,7 @@
 # and that the reduced-coordinate fit / deploy / pin wiring is consistent.
 using FitRateEquation
 using EnzymeRates
+using DataFrames
 using Random
 using Test
 using FitRateEquation.ChaLaws
@@ -118,13 +119,20 @@ end
 end
 
 @testset "drop_atp_rows filter" begin
-    concs = [(; NADP=5e-6, G6P=4e-5, NADPH=0.0, PGLn=0.0, ATP=0.0),
-             (; NADP=5e-6, G6P=4e-5, NADPH=0.0, PGLn=0.0, ATP=2e-3),
-             (; NADP=1e-5, G6P=8e-5, NADPH=0.0, PGLn=0.0, ATP=0.0)]
-    d = Dataset(collect(concs), [1.0, 0.8, 1.2],
-                            ["A|1", "A|1", "A|1"], [13.7, 13.7, 13.7])
-    d2 = FitRateEquation.drop_atp_rows(d)
-    @test nrows(d2) == 2
-    @test all(nt -> get(nt, :ATP, 0.0) <= 0.0, d2.concs)
-    @test d2.rate == [1.0, 1.2]
+    df = DataFrame(NADP  = [5e-6, 5e-6, 1e-5],
+                   G6P   = [4e-5, 4e-5, 8e-5],
+                   NADPH = [0.0, 0.0, 0.0],
+                   PGLn  = [0.0, 0.0, 0.0],
+                   ATP   = [0.0, 2e-3, 0.0],
+                   Rate  = [1.0, 0.8, 1.2],
+                   source = ["A|1", "A|1", "A|1"],
+                   Apparent_Keq = [13.7, 13.7, 13.7])
+    df2 = FitRateEquation.drop_atp_rows(df)
+    @test nrow(df2) == 2
+    @test all(df2.ATP .<= 0.0)
+    @test df2.Rate == [1.0, 1.2]
+
+    # A corpus with no ATP column at all passes through untouched (HK1-shaped input).
+    df_noatp = select(df, Not(:ATP))
+    @test FitRateEquation.drop_atp_rows(df_noatp) === df_noatp
 end
