@@ -14,4 +14,11 @@ using Test
     @test occursin("fit_corpus.csv", agents)
     @test occursin("read_fit_corpus", agents)    # the helper that replaced build_plot_df
     @test occursin("seven artifacts", agents)    # was six
+
+    # The determinism section must describe the single structural gate as implemented.
+    # Anchor on phrases unique to that section: a bare "structural" needle would pass on
+    # unrelated prose elsewhere in the file and would keep passing if the section vanished.
+    @test occursin("variant/mode/name", agents)
+    @test occursin("fitted values are not compared", agents)
+    @test !occursin("FITRATEEQ_BYTE_IDENTITY", agents)   # the retired opt-in
 end

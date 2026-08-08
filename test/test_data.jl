@@ -48,8 +48,8 @@ end
     # VALUES did not move is elsewhere in this file: the literal first-row assertions above
     # -- source/concs/rate/Keq/X_axis_label pinned to the corpus by hand -- and the
     # "read_corpus drop predicate (fixture corpus)" testset below. Not test_byte_identity.jl:
-    # by default that compares only variant/mode/name, with value/class/ci behind an opt-in
-    # env var, so it does not gate loaded values on a normal run.)
+    # that compares only variant/mode/name, never value/class/ci, so it does not gate
+    # loaded values at all.)
     for c in (g6pd_config(), pgd_config(), hk1_config())
         ref = load_dataset(c)
         got = FitRateEquation.dataset_from_corpus(FitRateEquation.read_corpus(c), c)

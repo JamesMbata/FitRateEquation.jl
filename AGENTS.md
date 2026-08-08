@@ -413,18 +413,34 @@ data](#plotting-the-fit-over-the-data) above).
 `test/fixtures/{g6pd,pgd}_smoke_macro_constants.csv` are committed reference
 `macro_constants.csv` outputs from a fixed-seed smoke run
 (`test/test_byte_identity.jl`). Every test run re-runs `run_g6pd(smoke=true,
-nprocs=1)` / `run_pgd(smoke=true, nprocs=1)` into a temp dir and diffs the result
-against the fixture: the `variant`/`mode`/`name`/`value`/`class` columns must match
-**exactly** (this is the strict gate on the fit output itself — the seeded CMA-ES
-budget is `maxiter`-bound, not wall-clock, so results are reproducible regardless of
-worker count or machine); the `ci` column (a finite-difference-Hessian confidence
-interval from `cha_classify`) is compared with `rtol=1e-6` instead, since FD-Hessian
-evaluation picks up last-bit floating-point noise from accumulated execution state
-when run mid-suite — a fresh-process run reproduces the fixture exactly on every
-column including `ci`. If you change the fit path (loss, bounds, CMA-ES config,
-gauge) and these fixtures fail, that is the regression gate doing its job: either
-the change is a bug, or the fixtures need a deliberate, reviewed regeneration — do
-not silently update them to make the test pass.
+nprocs=1)` / `run_pgd(smoke=true, nprocs=1)` into a temp dir and compares
+**variant/mode/name** against the fixture: which coordinates each variant x mode
+produces, and in what order. That property is machine-independent, so the gate is
+always on, on every machine and in CI.
+
+The **fitted values are not compared**, and this is deliberate. At smoke budget the
+seeded CMA-ES trajectory is under-converged, so different BLAS/RNG reduction
+ordering puts a different machine on a materially different point — measured spread
+is ~30-58% on `data_identified` coordinates and ~90-100% on `unconstrained` ones.
+`class` is not exempt: it is decided by `cha_classify` from the Hessian at that same
+drifted optimum. No single tolerance both survives that spread and still catches a
+real regression.
+
+An exact value/class comparison did live here as an opt-in tier. It was retired
+because it gated on Julia `VERSION` while the property it actually required was
+reference-*machine* identity: it could not pass in CI (rotating `ubuntu-latest`
+images) and did not pass on the maintainer's machine either, so it never gated
+anything. Behavioural regressions in the fit path are covered by
+`test_cha_deploy`, `test_cha_classify`, `test_mode_agreement` and the
+goodness-of-fit assertions. Exact reproduction of fit output *is* still gated,
+just not across machines: `test/test_parallel_equivalence.jl` asserts the
+`run_all` pmap path is **bit-identical** to the serial baseline — two runs in the
+same process, which is a determinism guarantee the package can actually make.
+
+If a structural comparison fails, that is the gate doing its job: the coordinate set
+or its ordering changed. Either the change is a bug, or the fixtures need a
+deliberate, reviewed regeneration — do not silently update them to make the test
+pass.
 
 ## Layout
 
