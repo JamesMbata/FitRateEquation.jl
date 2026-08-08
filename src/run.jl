@@ -393,10 +393,15 @@ function _hk1_h4_derived_rows(enzyme::Symbol, variant::Symbol, coords::AbstractD
      (name=:sqrt_KcKn, value=sqrtP, class=:derived, ci=NaN)]
 end
 
+# `corpus` is typed `AbstractDataFrame` to match `dataset_from_corpus` (src/core/data.jl): the
+# two are the same seam — `run_all` feeds both from one `row_filter(read_corpus(cfg))` value —
+# so a view-returning `row_filter` must reach both or neither. Keyword annotations ASSERT, they
+# do not `convert`, so narrowing this back to `DataFrame` would let a view pass the fit and then
+# TypeError here, after the whole run.
 function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G6PD",
                        enzyme::Symbol=:G6PD, deploy_keq::Real=median(d.keq),
                        anchor_reverse::Bool=true,
-                       corpus::Union{Nothing,DataFrame}=nothing,
+                       corpus::Union{Nothing,AbstractDataFrame}=nothing,
                        data_csv::Union{Nothing,AbstractString}=nothing)
     corpus === nothing && error("""
         write_outputs requires `corpus=` — without it no fit_corpus.csv is written, and the

@@ -423,7 +423,11 @@ Since **0.3.0**, the exported `write_outputs` **requires `corpus=`** — the exa
 (post-`row_filter`) DataFrame that was fit. This is a **breaking change**: a caller
 that omits it now errors instead of writing a run dir with no `fit_corpus.csv`,
 which the plotter cannot render. `run_all` always passes it, so only direct
-`write_outputs` callers are affected.
+`write_outputs` callers are affected. 0.3.0 also changed the `fit_corpus.csv`
+artifact itself: its metabolite columns are now emitted **sorted alphabetically**
+(G6PD: `ATP, G6P, NADP, NADPH, PGLn`, previously the config `Dict`'s hash order
+`NADP, ATP, G6P, PGLn, NADPH`), so read that file by column name — any consumer
+reading it positionally breaks silently.
 
 ## Determinism: the byte-identity smoke fixtures
 

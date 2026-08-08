@@ -219,10 +219,26 @@ end
     @test FitRateEquation._toml_escape("/plain/path.csv")      == "/plain/path.csv"
 end
 
-@testset "dataset_from_corpus accepts a SubDataFrame view" begin
+@testset "a SubDataFrame view survives the whole dataset_from_corpus -> write_outputs seam" begin
+    # `run_all` feeds one `row_filter(read_corpus(cfg))` value to BOTH ends, so testing them
+    # separately proves nothing: with only the first assertion, narrowing `write_outputs`'
+    # `corpus=` back to `DataFrame` stays green here while a view-returning `row_filter` runs
+    # the entire fit and only then dies on a bare TypeError. Both ends are asserted on the
+    # same view for that reason.
     cfg = g6pd_config()
     df  = FitRateEquation.read_corpus(cfg)
     @test nrow(df) > 2
-    d = FitRateEquation.dataset_from_corpus(view(df, 1:2, :), cfg)
+    v = view(df, 1:2, :)
+    d = FitRateEquation.dataset_from_corpus(v, cfg)
     @test FitRateEquation.nrows(d) == 2
+
+    # `results` is empty and `enzyme` is a symbol with no results-indexing report block, so this
+    # exercises the corpus path — the seam under test — without paying for a fit. It also pins
+    # that CSV.write handles a view (SubDataFrame is a Tables.jl source): the rows written are
+    # the view's rows, not the parent's.
+    out = mktempdir()
+    write_outputs(out, d, NamedTuple[]; corpus=v, enzyme=:NONE, name="NONE")
+    fc = CSV.read(joinpath(out, "fit_corpus.csv"), DataFrame)
+    @test nrow(fc) == 2
+    @test fc.Rate == df.Rate[1:2]
 end
