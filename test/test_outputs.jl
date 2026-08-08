@@ -1,4 +1,5 @@
 using FitRateEquation
+using EnzymeRates
 using CSV, DataFrames
 using Test
 
@@ -117,7 +118,7 @@ end
 
     # Row count agrees with what the fit actually saw.
     prov = read(joinpath(outdir, "provenance.toml"), String)
-    @test occursin("n_rows          = $(nrow(fc))", prov)
+    @test occursin("n_rows          = $(nrow(fc))\n", prov)
 
     # Provenance records where the corpus came from.
     @test occursin("data_csv        = \"$(abspath(tmpcsv))\"", prov)
@@ -130,6 +131,31 @@ end
     fc = CSV.read(joinpath(outdir, "fit_corpus.csv"), DataFrame)
     @test nrow(fc) > 0
     @test all(fc.ATP .<= 0.0)                 # the filtered-out rows are really gone
-    @test occursin("n_rows          = $(nrow(fc))",
+    @test occursin("n_rows          = $(nrow(fc))\n",
                    read(joinpath(outdir, "provenance.toml"), String))
+end
+
+@testset "fit_corpus.csv column order is deterministic" begin
+    cfg  = g6pd_config()
+    mets = FitRateEquation.metabolite_syms(cfg)
+    @test issorted(mets)
+    @test Set(mets) == Set(keys(cfg.metabolites))
+
+    outdir = mktempdir()
+    run_all(cfg; outdir=outdir, n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
+    fc = CSV.read(joinpath(outdir, "fit_corpus.csv"), DataFrame)
+
+    # The metabolite columns come first, in metabolite_syms order — not Dict hash order.
+    @test propertynames(fc)[1:length(mets)] == mets
+
+    # The fit path's own ordering: `d.concs`'s element type is a NamedTuple whose FIELD ORDER
+    # is a type parameter built from the same list. Nothing above observes it — the corpus
+    # columns and the adapter can both be sorted while this one silently is not.
+    d = FitRateEquation.load_dataset(cfg)
+    @test collect(propertynames(d.concs[1])) == mets     # the fit-path type parameter
+
+    # The renderer's adapter sweeps the same order, so the plotter and the fit cannot
+    # disagree about which column is which.
+    a = FitRateEquation.build_cha_adapter(:G6PD, Dict{Symbol,Float64}(), :SS_NADPH_release_rate_eq, 13.7)
+    @test collect(EnzymeRates.metabolites(a)) == mets
 end

@@ -242,6 +242,8 @@ function FitRateEquation.plot_consensus_fit(run_dir::AbstractString)
     # custom data_csv or row_filter. Errors for HK1 (no X_axis_label) and for pre-0.2.0
     # run dirs (no snapshot).
     df = FitRateEquation.read_fit_corpus(run_dir)
+    # This line's WORDING is asserted on by test/test_plot_render.jl — it is the only
+    # external evidence of which corpus was actually drawn. Reword it and update that test.
     println("Data: $(nrow(df)) rows, $(length(unique(df.source))) source figures")
 
     mc = CSV.read(mc_file, DataFrame)

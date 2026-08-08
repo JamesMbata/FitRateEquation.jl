@@ -305,6 +305,11 @@ function _git_sha(dir)
     end
 end
 
+# `data_csv` is the only user-controlled string written into provenance.toml; a Windows path
+# or one containing a quote would otherwise emit syntactically invalid TOML. The other quoted
+# values (timestamp, versions, git SHA) are package-controlled.
+_toml_escape(s::AbstractString) = replace(s, "\\" => "\\\\", "\"" => "\\\"")
+
 # Self-certifying provenance: the package's own version + the EnzymeRates dependency SHA
 # + the exact fit budget/seed + corpus size, so a run dir is interpretable (full vs smoke,
 # which code) without inferring from dir name.
@@ -335,7 +340,8 @@ function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=noth
         # Where the corpus came from. Traceability only — fit_corpus.csv, not this path,
         # is what the plotter reads (a path is a pointer; the file it names can move or
         # change after the run, a snapshot cannot).
-        data_csv === nothing || println(io, "data_csv        = \"$(abspath(data_csv))\"")
+        data_csv === nothing ||
+            println(io, "data_csv        = \"$(_toml_escape(abspath(data_csv)))\"")
         # Self-describing run: record the reverse-anchor state and the fitted variant(s) so a
         # conflated (anchor_reverse=false) diagnostic run dir is never mistaken for a deploy run.
         hasproperty(meta, :anchor_reverse) &&
@@ -387,17 +393,27 @@ function _hk1_h4_derived_rows(enzyme::Symbol, variant::Symbol, coords::AbstractD
      (name=:sqrt_KcKn, value=sqrtP, class=:derived, ci=NaN)]
 end
 
+# `corpus` is typed `AbstractDataFrame` to match `dataset_from_corpus` (src/core/data.jl): the
+# two are the same seam — `run_all` feeds both from one `row_filter(read_corpus(cfg))` value —
+# so a view-returning `row_filter` must reach both or neither. Keyword annotations ASSERT, they
+# do not `convert`, so narrowing this back to `DataFrame` would let a view pass the fit and then
+# TypeError here, after the whole run.
 function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G6PD",
                        enzyme::Symbol=:G6PD, deploy_keq::Real=median(d.keq),
                        anchor_reverse::Bool=true,
-                       corpus::Union{Nothing,DataFrame}=nothing,
+                       corpus::Union{Nothing,AbstractDataFrame}=nothing,
                        data_csv::Union{Nothing,AbstractString}=nothing)
+    corpus === nothing && error("""
+        write_outputs requires `corpus=` — without it no fit_corpus.csv is written, and the
+        resulting run dir cannot be plotted: a custom `data_csv` or `row_filter` is not
+        recoverable from outside the run, so the plotter would have to guess. Pass the exact
+        (post-row_filter) corpus DataFrame that was fit.""")
     meta === nothing || _write_provenance(outdir, d, meta; deploy_keq=deploy_keq,
                                           data_csv=data_csv)
     # fit_corpus.csv — the EXACT rows fit (post-row_filter, Molar), so the plotter reads
     # the corpus back instead of re-deriving it from a config it cannot see. A run dir
     # written without it is not plottable; see plot_consensus_fit.
-    corpus === nothing || CSV.write(joinpath(outdir, "fit_corpus.csv"), corpus)
+    CSV.write(joinpath(outdir, "fit_corpus.csv"), corpus)
     keq = deploy_keq
     # macro_constants.csv (keyed by variant × mode): the classed cha_coords PLUS the derived
     # apparent Michaelis constants (Km_G6P / Km_PGA), so downstream readers see the named

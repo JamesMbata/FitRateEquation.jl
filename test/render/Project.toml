@@ -1,0 +1,32 @@
+# Sub-environment for the CairoMakie render check (test/test_plot_render.jl).
+#
+# CairoMakie is a [weakdeps] entry of the package, so it is NOT loadable from the main
+# project env — `julia --project=. test/test_plot_render.jl` dies at `using CairoMakie`
+# before reaching a single test. This env makes the documented invocation work without
+# putting a multi-minute Makie precompile into the default suite:
+#   julia --project=test/render -e 'using Pkg; Pkg.instantiate()'   # first run on a checkout
+#   julia --project=test/render test/test_plot_render.jl
+#
+# No Manifest.toml is committed; the root .gitignore's unanchored `Manifest.toml` covers it —
+# hence the instantiate step, which a fresh clone always needs.
+# EnzymeRates is repeated here because a [sources] entry is honoured from the ACTIVE project
+# only — a dev'd dependency's own [sources] are not inherited. KEEP ITS REV IN SYNC WITH THE
+# ROOT Project.toml's [sources]: this entry wins, so bumping only the root leaves the render
+# check silently resolving the old EnzymeRates.
+
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+FitRateEquation = "737bd8f2-0166-41f4-a907-b8b3dd7452d9"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[extras]
+# Not a direct dependency of this env — it is FitRateEquation's. It is named here only
+# because Pkg (1.11 and 1.12 alike) rejects a [sources] entry for a package absent from
+# deps/extras.
+EnzymeRates = "e7a1c2d3-4b5f-6a7e-8c9d-0e1f2a3b4c5d"
+
+[sources]
+FitRateEquation = {path = "../.."}
+EnzymeRates = {url = "https://github.com/DenisTitovLab/EnzymeRates.jl", rev = "642352f227850b3417027856b9e07dba97bc1f72"}

@@ -39,6 +39,18 @@ end
  rows it fit (`fit_corpus.csv`) without a second, drift-prone loader."
 load_dataset(cfg) = dataset_from_corpus(read_corpus(cfg), cfg)
 
+# Columns `read_corpus` writes itself, after the metabolite loop. A config whose metabolite
+# key collides with one of these would have its data silently overwritten, so the collision
+# is rejected up front — where the offending key can still be named.
+const _RESERVED_CORPUS_COLS = (:Rate, :source, :Apparent_Keq, :X_axis_label)
+
+# THE metabolite ordering. `cfg.metabolites` is an unordered Dict, and three places
+# independently derived an order from it: the corpus column order, the `d.concs` NamedTuple
+# TYPE PARAMETER, and the renderer's adapter sweep order. They agreed only because they all
+# called keys() on the same Dict in one process, and none was stable across Julia versions.
+# Sorting once here makes all three stable and provably identical to each other.
+metabolite_syms(cfg) = sort(collect(keys(cfg.metabolites)))
+
 "Read the corpus CSV into the canonical fit DataFrame: one Molar column per metabolite
  symbol, plus Rate / source (Article|Fig) / Apparent_Keq, with zero, blank and non-finite
  rate rows dropped. `X_axis_label` is carried through when the corpus has it (G6PD/PGD do;
@@ -48,8 +60,14 @@ load_dataset(cfg) = dataset_from_corpus(read_corpus(cfg), cfg)
  it, so they cannot drift apart."
 function read_corpus(cfg)
     raw = CSV.read(cfg.data_csv, DataFrame)
+    for s in metabolite_syms(cfg)
+        s in _RESERVED_CORPUS_COLS && error(
+            "read_corpus: config metabolite key :$s collides with a reserved corpus " *
+            "column ($(join(_RESERVED_CORPUS_COLS, ", "))). Rename the metabolite symbol; " *
+            "read_corpus writes these four itself and would overwrite it.")
+    end
     df  = DataFrame()
-    for s in collect(keys(cfg.metabolites))
+    for s in metabolite_syms(cfg)
         col, unit = cfg.metabolites[s]
         vals = _to_float.(raw[!, col], 0.0)      # missing concentrations -> 0.0
         df[!, s] = unit === :uM ? vals ./ 1e6 : vals
@@ -66,8 +84,8 @@ end
  row-filtered). Rebuilds the same concretely-typed row NamedTuple vector `load_dataset`
  built, so `d.concs` stays concrete and loss evaluation does not fall back to dynamic
  dispatch."
-function dataset_from_corpus(df::DataFrame, cfg)
-    metsyms = collect(keys(cfg.metabolites))
+function dataset_from_corpus(df::AbstractDataFrame, cfg)
+    metsyms = metabolite_syms(cfg)
     T = NamedTuple{Tuple(metsyms), NTuple{length(metsyms),Float64}}
     concs = T[T(Tuple(Float64(row[s]) for s in metsyms)) for row in eachrow(df)]
     Dataset(concs, Vector{Float64}(df.Rate), Vector{String}(df.source),

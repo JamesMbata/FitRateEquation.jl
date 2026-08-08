@@ -25,4 +25,5 @@ jobs:
         with: {version: '1.12'}
       - name: Render extension smoke
         run: |
-          julia -e 'using Pkg; Pkg.activate(mktempdir()); Pkg.develop(path="."); Pkg.add("CairoMakie"); include("test/test_plot_render.jl")'
+          julia --project=test/render -e 'using Pkg; Pkg.instantiate()'
+          julia --project=test/render test/test_plot_render.jl

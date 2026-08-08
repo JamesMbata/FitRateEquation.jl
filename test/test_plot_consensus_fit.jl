@@ -171,3 +171,74 @@ end
     @test err2 isa ErrorException
     @test occursin("X_axis_label", err2.msg)
 end
+
+@testset "read_fit_corpus validates every renderer column" begin
+    full = DataFrame(Rate=[1.0], source=["A|1"], Apparent_Keq=[13.7],
+                     X_axis_label=["G6P"], G6P=[1e-4])
+
+    # All four present: reads back fine.
+    ok = mktempdir()
+    CSV.write(joinpath(ok, "fit_corpus.csv"), full)
+    @test nrow(FitRateEquation.read_fit_corpus(ok)) == 1
+
+    # Each required column missing in turn: a clear error, NOT a downstream @warn. The
+    # message must NAME the missing column — an ErrorException alone would also be satisfied
+    # by some unrelated error escaping read_fit_corpus, which is exactly the confusion this
+    # validation exists to remove.
+    for c in (:Rate, :source, :Apparent_Keq, :X_axis_label)
+        d = mktempdir()
+        CSV.write(joinpath(d, "fit_corpus.csv"), full[!, Not(c)])
+        err = try; FitRateEquation.read_fit_corpus(d); nothing; catch e; e; end
+        @test err isa ErrorException
+        @test occursin("no `$c` column", err.msg)
+    end
+end
+
+@testset "read_corpus rejects a metabolite key that collides with a reserved column" begin
+    cfg = g6pd_config()
+    for reserved in FitRateEquation._RESERVED_CORPUS_COLS
+        bad = (; cfg..., metabolites = Dict(reserved => ("[G6P] (uM)", :uM)))
+        @test_throws ErrorException FitRateEquation.read_corpus(bad)
+    end
+    # The bundled config is unaffected.
+    @test nrow(FitRateEquation.read_corpus(cfg)) > 0
+end
+
+@testset "write_outputs requires the corpus it fit" begin
+    # Every argument is valid, so this asserts the corpus guard specifically rather than
+    # passing because some earlier argument blew up — and it stays correct wherever in the
+    # body the guard sits. Matching the message means the test fails loudly if the guard is
+    # ever reworded or removed, instead of being satisfied by an unrelated error.
+    d = FitRateEquation.Dataset([(; NADP=1e-5, G6P=1e-4)], [1.0], ["Article|1"], [13.7])
+    @test_throws "write_outputs requires `corpus=`" write_outputs(mktempdir(), d, NamedTuple[])
+end
+
+@testset "_toml_escape quotes backslashes and quotes" begin
+    @test FitRateEquation._toml_escape("C:\\data\\corpus.csv") == "C:\\\\data\\\\corpus.csv"
+    @test FitRateEquation._toml_escape("odd\"name.csv")        == "odd\\\"name.csv"
+    @test FitRateEquation._toml_escape("/plain/path.csv")      == "/plain/path.csv"
+end
+
+@testset "a SubDataFrame view survives the whole dataset_from_corpus -> write_outputs seam" begin
+    # `run_all` feeds one `row_filter(read_corpus(cfg))` value to BOTH ends, so testing them
+    # separately proves nothing: with only the first assertion, narrowing `write_outputs`'
+    # `corpus=` back to `DataFrame` stays green here while a view-returning `row_filter` runs
+    # the entire fit and only then dies on a bare TypeError. Both ends are asserted on the
+    # same view for that reason.
+    cfg = g6pd_config()
+    df  = FitRateEquation.read_corpus(cfg)
+    @test nrow(df) > 2
+    v = view(df, 1:2, :)
+    d = FitRateEquation.dataset_from_corpus(v, cfg)
+    @test FitRateEquation.nrows(d) == 2
+
+    # `results` is empty and `enzyme` is a symbol with no results-indexing report block, so this
+    # exercises the corpus path — the seam under test — without paying for a fit. It also pins
+    # that CSV.write handles a view (SubDataFrame is a Tables.jl source): the rows written are
+    # the view's rows, not the parent's.
+    out = mktempdir()
+    write_outputs(out, d, NamedTuple[]; corpus=v, enzyme=:NONE, name="NONE")
+    fc = CSV.read(joinpath(out, "fit_corpus.csv"), DataFrame)
+    @test nrow(fc) == 2
+    @test fc.Rate == df.Rate[1:2]
+end

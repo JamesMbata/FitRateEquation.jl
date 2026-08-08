@@ -3,7 +3,7 @@ Manifest.toml
 *.cov
 
 /.worktrees/
-/docs/
+/docs/superpowers/
 /.superpowers/
 
 # Pipeline run outputs (macro_constants.csv, micro_parameters.jl, report.md, plots/, …).
