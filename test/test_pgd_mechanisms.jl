@@ -4,7 +4,8 @@ using Test
 
 @testset "PGD mechanisms" begin
     vs = FitRateEquation.consensus_variants(:PGD)
-    @test [v.name for v in vs] == [:RE_rate_eq, :SS_NADPH_release_rate_eq, Symbol("+NADPH_deadend_rate_eq"), :cha_base]
+    @test [v.name for v in vs] == [:RE_rate_eq, :SS_NADPH_release_rate_eq,
+                                   Symbol("+NADPH_deadend_rate_eq"), :cha_base, :full_re]
     v1 = vs[1].mech; v2 = vs[2].mech
     mets1 = Set(EnzymeRates.metabolites(v1))
     for s in (:NADP, :PGA, :Ru5P, :CO2, :NADPH, :ATP)
@@ -42,4 +43,20 @@ end
     @test length(ss_releases) == 1
     # The forward-Ki cross channel [PGA·NADPH] is present (E·PGA dead-end).
     @test any(occursin("PGA", string(mono)) && occursin("NADPH", string(mono)) for (mono, _) in den)
+end
+
+@testset "PGD :full_re core: fully-RE topology, effectors OFF (6 RE free_params)" begin
+    vs = FitRateEquation.consensus_variants(:PGD)
+    i = findfirst(v -> Symbol(v.name) === :full_re, vs)
+    @test i !== nothing
+    m = vs[i].mech
+    # V1 minus the two ATP dead-ends: exactly the 6 RE binding constants, no K_ATPinh_*.
+    @test Set(free_params(m)) == Set([:K_CO2_ENADPHRu5P, :K_NADPH_E, :K_NADP_E,
+                                      :K_NADP_EPGA, :K_PGA_E, :K_Ru5P_ENADPH])
+    @test !any(s -> occursin("ATPinh", String(s)), free_params(m))
+    # Effectors OFF ⇒ ATP is not a metabolite; the 5 real substrates/products remain.
+    @test :ATP ∉ EnzymeRates.metabolites(m)
+    @test Set([:NADP, :PGA, :CO2, :NADPH, :Ru5P]) ⊆ Set(EnzymeRates.metabolites(m))
+    # Exactly one SS step (catalysis gauge); all releases RE.
+    @test count(st -> st[3] == false, EnzymeRates.reactions(m)) == 1
 end

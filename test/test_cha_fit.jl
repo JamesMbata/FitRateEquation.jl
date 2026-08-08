@@ -336,3 +336,15 @@ end
     L_perfig = FitRateEquation.ChaFit.cha_centered_logratio_loss(enzyme, mech, d, r.coords)
     @test isapprox(r.loss, L_perfig; rtol=1e-6)
 end
+
+@testset "_cha_anchor_penalty reads the :full_re apparent Km at C=1" begin
+    # alpha*Kd_PGA sits EXACTLY on the anchor target -> penalty must be ~0 for :full_re (C=1),
+    # but NONZERO for the default fiber path (C = 1 + kf/CHA_DEPLOY_RELEASE_RATE != 1).
+    coords = Dict(:Kd_NADP=>1e-5, :Kd_PGA=>59e-6/1.4, :alpha=>1.4, :Kd_NADPH=>1e-6,
+                  :Kd_Ru5P=>5e-5, :Kd_CO2=>1e-4)                     # alpha*Kd_PGA = 59e-6
+    anchors = Dict(:Km_PGA => (target = log10(59e-6), weight = 1.0))
+    pen_fr = FitRateEquation.ChaFit._cha_anchor_penalty(:PGD, coords, anchors; variant=:full_re)
+    pen_dp = FitRateEquation.ChaFit._cha_anchor_penalty(:PGD, coords, anchors; variant=:_deploy)
+    @test pen_fr < 1e-12
+    @test pen_dp > 1e-8
+end

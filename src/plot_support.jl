@@ -29,7 +29,7 @@ const _VARIANT_TO_ENZYME = Dict(
     "SS_NADPH_release_rate_eq" => :G6PD, "RE_rate_eq" => :G6PD, "no_atp" => :G6PD,
     "no_g6p_nadph_deadend" => :G6PD, "no_g6p_atp_deadend" => :G6PD,
     "no_g6p_both_deadends" => :G6PD,
-    "cha_base" => :PGD,
+    "cha_base" => :PGD, "full_re" => :PGD,
     "H1" => :HK1, "H4" => :HK1,
 )
 
@@ -103,7 +103,8 @@ _cha_adapter_tuple(a::ChaAdapter, keq::Real) =
 
 function EnzymeRates.rate_equation(a::ChaAdapter, concs, params)
     ratefn = a.enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
-             a.enzyme === :PGD  ? ChaLaws.cha_rate_PGD  :
+             a.enzyme === :PGD  ? (a.variant === :full_re ? ChaLaws.cha_rate_PGD_fullRE :
+                                                            ChaLaws.cha_rate_PGD) :
              a.enzyme === :HK1  ? ChaLawsHK1.cha_rate_HK1 :
              error("ChaAdapter rate_equation: unknown enzyme $(a.enzyme)")
     keq = hasproperty(params, :Keq) ? Float64(params.Keq) : a.default_keq

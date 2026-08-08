@@ -91,8 +91,14 @@ function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy)
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EG,
              :Km_NADPH_rev]
     elseif enzyme === :PGD
-        return [:Kd_NADP, :Kd_PGA, :alpha, :Kd_CO2, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EN,
-                :Km_NADPH_rev]
+        return variant === :full_re ?
+            # Fully-RE (fiber-free): NO promoted-release fiber DOF, NO separate forward Ki_NADPH.
+            # Kd_NADPH is the single competitive NADPH constant (Km_NADPH_rev ≡ Kd_NADPH); Kd_Ru5P
+            # is a real RE coord. Effector coords (:Ki_ATP/:Ki_ATP_EN/:Ki_NADPH) are appended by
+            # the config only when the dead-ends are enabled (default OFF).
+            [:Kd_NADP, :Kd_PGA, :alpha, :Kd_NADPH, :Kd_Ru5P, :Kd_CO2] :
+            [:Kd_NADP, :Kd_PGA, :alpha, :Kd_CO2, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EN,
+             :Km_NADPH_rev]
     elseif enzyme === :HK1
         # H4 reparameterizes the two G6P dissociation constants {Ki_G6P_C, Ki_G6P_N} into the
         # data-identifiable pair {Keff, split_ratio}, where Keff = 1/(1/Kc+1/Kn) (effective G6P
@@ -115,7 +121,15 @@ end
 #     PGD  -> KdRu (Ru5P-release equilibrium, distinct from Km_NADPH_rev).
 # -----------------------------------------------------------------------------------------
 function cha_haldane_kr(enzyme::Symbol, coords::AbstractDict; keq::Real, release_rate::Real,
-                        kf::Real, release_eq::Real = _default_release_eq(enzyme, coords))
+                        kf::Real, release_eq::Real = _default_release_eq(enzyme, coords),
+                        variant::Symbol = :_deploy)
+    # Fully-RE PGD: no promoted-release fiber. Haldane comes straight from the RE dissociation
+    # constants: kr = kf·Kd_NADPH·Kd_Ru5P·Kd_CO2 / (Keq·α·Kd_NADP·Kd_PGA). release_rate/release_eq
+    # are inert here (fiber-free); they are accepted for signature parity with the cha_base call.
+    if enzyme === :PGD && variant === :full_re
+        return coords[:Kd_NADPH] * coords[:Kd_Ru5P] * coords[:Kd_CO2] * kf /
+               (coords[:Kd_NADP] * coords[:Kd_PGA] * coords[:alpha] * keq)
+    end
     if enzyme === :G6PD
         # Keq_app = Kd_6PGLn * Km_NADPH_rev * kf / (Kd_NADP * Kd_G6P * alpha * kr).
         # release_eq == Km_NADPH_rev on the G6PD fiber.
@@ -184,6 +198,26 @@ function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
                   alpha    = _hk1_variant_alpha(variant),
                   Keq = keq, kf = kf, k2f = kf, Et = Et)   # k2f == kf == 1: Pi competitor-only
     end
+    # PGD fully-RE variant: NO promoted SS-release fiber (no koff/kon; C=1). The reverse arm is
+    # carried entirely by the Haldane kr; the product Kd's (Kd_NADPH/Kd_Ru5P/Kd_CO2) are real
+    # coords. Mirrors the HK1 early-return so the generic release-fiber path below is untouched.
+    # Effector dead-ends are appended ONLY when present as coords (default OFF → law uses Inf).
+    if enzyme === :PGD && variant === :full_re
+        krv = kr === nothing ?
+            cha_haldane_kr(enzyme, coords; keq=keq, release_rate=release_rate, kf=kf,
+                           release_eq=release_eq, variant=variant) : kr
+        tup = (; Kd_NADP  = coords[:Kd_NADP],
+                 Kd_PGA   = coords[:Kd_PGA],
+                 alpha    = coords[:alpha],
+                 Kd_NADPH = coords[:Kd_NADPH],
+                 Kd_Ru5P  = coords[:Kd_Ru5P],
+                 Kd_CO2   = coords[:Kd_CO2],
+                 kf = kf, kr = krv, Et = Et, Keq = keq)
+        for s in (:Ki_ATP, :Ki_ATP_EN, :Ki_NADPH)
+            haskey(coords, s) && (tup = merge(tup, NamedTuple{(s,)}((coords[s],))))
+        end
+        return tup
+    end
     krv = kr === nothing ?
         cha_haldane_kr(enzyme, coords; keq=keq, release_rate=release_rate, kf=kf,
                        release_eq=release_eq) : kr
@@ -246,7 +280,8 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
                                     kr::Union{Nothing,Real} = nothing,
                                     variant::Symbol = :_deploy)
     cha_rate_enz = enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
-                   enzyme === :PGD  ? ChaLaws.cha_rate_PGD :
+                   enzyme === :PGD  ? (variant === :full_re ? ChaLaws.cha_rate_PGD_fullRE :
+                                                              ChaLaws.cha_rate_PGD) :
                    enzyme === :HK1  ? ChaLawsHK1.cha_rate_HK1 :
                    error("cha_centered_logratio_loss: unknown enzyme $enzyme")
     n = nrows(d)
@@ -385,14 +420,16 @@ end
 # -----------------------------------------------------------------------------------------
 function cha_apparent_km(enzyme::Symbol, coords::AbstractDict, which::Symbol;
                          kf::Real = 1.0,
-                         release_rate::Real = CHA_DEPLOY_RELEASE_RATE)
+                         release_rate::Real = CHA_DEPLOY_RELEASE_RATE,
+                         variant::Symbol = :_deploy)
     # HK1: C = 1 (no SS-release fiber) and gamma = 1, so apparent Km == binary Kd directly.
     if enzyme === :HK1
         which === :Km_Glc && return coords[:Kd_Glc]
         which === :Km_ATP && return coords[:Kd_ATP]
         error("cha_apparent_km(:HK1): expected :Km_Glc or :Km_ATP (got $which)")
     end
-    C = 1 + kf / release_rate
+    # Fully-RE PGD is fiber-free (HK1 precedent): C = 1, so apparent Km == alpha*Kd exactly.
+    C = (enzyme === :PGD && variant === :full_re) ? 1.0 : 1 + kf / release_rate
     kd = which === :Km_PGA  ? coords[:Kd_PGA] :
          which === :Km_NADP ? coords[:Kd_NADP] :
          which === :Km_G6P  ? coords[:Kd_G6P] :
@@ -430,14 +467,14 @@ function _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
     end
     coords_dict = Dict(coords_syms .=> 10 .^ u)
     L = cha_centered_logratio_loss(enzyme, mech, d, coords_dict; keq=keq, variant=variant)
-    L += _cha_anchor_penalty(enzyme, coords_dict, anchors)
+    L += _cha_anchor_penalty(enzyme, coords_dict, anchors; variant=variant)
     L
 end
 
 # Additive soft-anchor penalty on the apparent Michaelis constants. For each `which =>
 # (target, weight)` in `anchors`, adds weight*(log10(apparent_Km) - target)^2. anchors=nothing
 # (or empty) contributes EXACTLY 0.0 -- the base centered-loss arithmetic is untouched.
-function _cha_anchor_penalty(enzyme, coords_dict, anchors)
+function _cha_anchor_penalty(enzyme, coords_dict, anchors; variant::Symbol=:_deploy)
     anchors === nothing && return 0.0
     pen = 0.0
     for (which, spec) in anchors
@@ -447,7 +484,7 @@ function _cha_anchor_penalty(enzyme, coords_dict, anchors)
         # deployed apparent Km ~(C_fit/C_deploy)x the target -- ~2x for PGD Km_PGA. Re-anchored
         # on the deploy fiber 2026-06-15 so a PGD consensus deploy lands Km_PGA on the literature
         # band, not 2x it; this is a re-fit -- Mode-2/3 PGD results change, Mode-1 is unaffected.)
-        km = cha_apparent_km(enzyme, coords_dict, which)   # release_rate defaults to CHA_DEPLOY_RELEASE_RATE
+        km = cha_apparent_km(enzyme, coords_dict, which; variant=variant)   # release_rate defaults to CHA_DEPLOY_RELEASE_RATE; :full_re => C=1
         pen += spec.weight * (log10(km) - spec.target)^2
     end
     pen
