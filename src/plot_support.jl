@@ -117,7 +117,7 @@ keq is supplied per figure by the renderer (:Apparent_Keq path). `default_keq` i
 fallback for a caller that passes no Keq."
 function build_cha_adapter(enzyme::Symbol, coords::AbstractDict, variant::Symbol,
                            default_keq::Real)
-    metab_syms = collect(keys(config_for(enzyme).metabolites))
+    metab_syms = metabolite_syms(config_for(enzyme))
     return ChaAdapter(enzyme, Dict{Symbol,Float64}(coords), variant, metab_syms,
                       Float64(default_keq))
 end
