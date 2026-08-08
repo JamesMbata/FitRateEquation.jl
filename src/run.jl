@@ -392,12 +392,17 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
                        anchor_reverse::Bool=true,
                        corpus::Union{Nothing,DataFrame}=nothing,
                        data_csv::Union{Nothing,AbstractString}=nothing)
+    corpus === nothing && error("""
+        write_outputs requires `corpus=` — without it no fit_corpus.csv is written, and the
+        resulting run dir cannot be plotted: a custom `data_csv` or `row_filter` is not
+        recoverable from outside the run, so the plotter would have to guess. Pass the exact
+        (post-row_filter) corpus DataFrame that was fit.""")
     meta === nothing || _write_provenance(outdir, d, meta; deploy_keq=deploy_keq,
                                           data_csv=data_csv)
     # fit_corpus.csv — the EXACT rows fit (post-row_filter, Molar), so the plotter reads
     # the corpus back instead of re-deriving it from a config it cannot see. A run dir
     # written without it is not plottable; see plot_consensus_fit.
-    corpus === nothing || CSV.write(joinpath(outdir, "fit_corpus.csv"), corpus)
+    CSV.write(joinpath(outdir, "fit_corpus.csv"), corpus)
     keq = deploy_keq
     # macro_constants.csv (keyed by variant × mode): the classed cha_coords PLUS the derived
     # apparent Michaelis constants (Km_G6P / Km_PGA), so downstream readers see the named

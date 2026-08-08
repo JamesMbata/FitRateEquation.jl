@@ -39,6 +39,11 @@ end
  rows it fit (`fit_corpus.csv`) without a second, drift-prone loader."
 load_dataset(cfg) = dataset_from_corpus(read_corpus(cfg), cfg)
 
+# Columns `read_corpus` writes itself, after the metabolite loop. A config whose metabolite
+# key collides with one of these would have its data silently overwritten, so the collision
+# is rejected up front — where the offending key can still be named.
+const _RESERVED_CORPUS_COLS = (:Rate, :source, :Apparent_Keq, :X_axis_label)
+
 "Read the corpus CSV into the canonical fit DataFrame: one Molar column per metabolite
  symbol, plus Rate / source (Article|Fig) / Apparent_Keq, with zero, blank and non-finite
  rate rows dropped. `X_axis_label` is carried through when the corpus has it (G6PD/PGD do;
@@ -48,6 +53,12 @@ load_dataset(cfg) = dataset_from_corpus(read_corpus(cfg), cfg)
  it, so they cannot drift apart."
 function read_corpus(cfg)
     raw = CSV.read(cfg.data_csv, DataFrame)
+    for s in keys(cfg.metabolites)
+        s in _RESERVED_CORPUS_COLS && error(
+            "read_corpus: config metabolite key :$s collides with a reserved corpus " *
+            "column ($(join(_RESERVED_CORPUS_COLS, ", "))). Rename the metabolite symbol; " *
+            "read_corpus writes these four itself and would overwrite it.")
+    end
     df  = DataFrame()
     for s in collect(keys(cfg.metabolites))
         col, unit = cfg.metabolites[s]

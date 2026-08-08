@@ -140,6 +140,15 @@ function read_fit_corpus(run_dir::AbstractString)
         recoverable from outside the run, so plotting this dir would silently overlay the
         fitted law on the wrong data. Re-run the fit to produce a plottable run dir.""")
     df = CSV.read(f, DataFrame)
+    # Validated HERE, not in the renderer: the render loop wraps each cell in try/catch and
+    # downgrades a failure to @warn, so a snapshot missing Rate or Apparent_Keq yields an
+    # empty plots/ dir with no stated cause. `source` is read before that loop, so it already
+    # failed loudly — but with a raw DataFrames error, not one that names the fix.
+    for c in (:Rate, :source, :Apparent_Keq)
+        hasproperty(df, c) || error(
+            "read_fit_corpus: $f has no `$c` column. A fit_corpus.csv snapshot must carry " *
+            "Rate, source and Apparent_Keq for the renderer to draw a panel.")
+    end
     hasproperty(df, :X_axis_label) || error(
         "read_fit_corpus: $f has no `X_axis_label` column, which the per-figure panel " *
         "renderer requires (it picks each panel's swept metabolite from it). HK1 corpora " *
