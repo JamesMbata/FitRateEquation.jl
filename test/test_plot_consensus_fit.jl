@@ -8,7 +8,7 @@
 # CairoMakie package extension (ext/FitRateEquationMakieExt.jl) -- see test_plot_render.jl
 # (NOT run by runtests.jl) for the actual render check.
 
-using Test, DataFrames, FitRateEquation, EnzymeRates
+using Test, CSV, DataFrames, FitRateEquation, EnzymeRates
 
 @testset "plotter helpers" begin
     @testset "detect_enzyme" begin
@@ -139,4 +139,35 @@ end
     else
         @test_skip "CairoMakie loaded; stub not exercised"
     end
+end
+
+@testset "read_fit_corpus" begin
+    # A run dir with a snapshot: returned verbatim.
+    dir = mktempdir()
+    CSV.write(joinpath(dir, "fit_corpus.csv"),
+              DataFrame(NADP = [1e-6], G6P = [2e-4], NADPH = [0.0], PGLn = [0.0],
+                        ATP = [0.0], Rate = [15.33], source = ["Wang2002|1A"],
+                        Apparent_Keq = [43.743], X_axis_label = ["NADP"]))
+    df = FitRateEquation.read_fit_corpus(dir)
+    @test nrow(df) == 1
+    @test df.source[1] == "Wang2002|1A"
+    @test df.NADP[1] ≈ 1e-6
+
+    # A run dir with NO snapshot (pre-0.2.0): a clear error, never a silent fallback to
+    # the bundled corpus. This is the reported bug.
+    empty_dir = mktempdir()
+    err = try; FitRateEquation.read_fit_corpus(empty_dir); nothing; catch e; e; end
+    @test err isa ErrorException
+    @test occursin("fit_corpus.csv", err.msg)
+    @test occursin("0.2.0", err.msg)
+
+    # A snapshot with no X_axis_label (HK1-shaped): errors at PLOT time, naming the column.
+    hk1_dir = mktempdir()
+    CSV.write(joinpath(hk1_dir, "fit_corpus.csv"),
+              DataFrame(Glucose = [1e-3], ATP = [1e-3], G6P = [0.0], ADP = [0.0],
+                        Pi = [0.0], Rate = [1.0], source = ["Choe|1"],
+                        Apparent_Keq = [2700.0]))
+    err2 = try; FitRateEquation.read_fit_corpus(hk1_dir); nothing; catch e; e; end
+    @test err2 isa ErrorException
+    @test occursin("X_axis_label", err2.msg)
 end

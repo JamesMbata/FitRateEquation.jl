@@ -159,10 +159,14 @@ _cells(enzyme::Symbol=:G6PD; variants::Vector{Symbol}=run_variants(enzyme)) =
 #   Row filter for the ATP-free fit: drop any row carrying ATP (ATP > 0). The :no_atp law
 #   is ATP-blind, so ATP-inhibited rows would become forced-misfit residuals biasing the
 #   core constants. Used by run_g6pd_noatp.jl as run_all's `row_filter`.
+#
+#   Row filters operate on the canonical corpus DataFrame (read_corpus's output), NOT on
+#   the Dataset, so the rows that survive are exactly the rows snapshotted to
+#   fit_corpus.csv. A corpus with no ATP column passes through unchanged.
 # ---------------------------------------------------------------------------------------
-function drop_atp_rows(d::Dataset)
-    keep = [i for i in 1:nrows(d) if get(d.concs[i], :ATP, 0.0) <= 0.0]
-    Dataset(d.concs[keep], d.rate[keep], d.group[keep], d.keq[keep])
+function drop_atp_rows(df::DataFrame)
+    hasproperty(df, :ATP) || return df
+    filter(r -> r.ATP <= 0.0, df)
 end
 
 # Flat list of independent fit-tasks across all cells: one `:main` per cell, then one
@@ -252,14 +256,20 @@ end
  anchor-optional ablations (`_G6PD_ANCHOR_OPTIONAL_VARIANTS`), `true` otherwise. Explicitly
  passing `false` for a variant that still requires the anchor (the deploy variant,
  `:RE_rate_eq`) reproduces the conflating fit and marks that variant's output NOT DEPLOYABLE.
- No-op for PGD/HK1 (no always-on reverse anchor)."
+ No-op for PGD/HK1 (no always-on reverse anchor).
+ `row_filter` is a `DataFrame -> DataFrame` function applied to `read_corpus`'s output before
+ the `Dataset` is built, so the rows it keeps are exactly the rows fit and the rows written to
+ `fit_corpus.csv` (`drop_atp_rows` is the bundled example)."
 function run_all(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_000_000,
                  maxtime::Real=20.0, seed::Int=1,
                  variants::Vector{Symbol}=run_variants(Symbol(cfg.name)),
                  row_filter=identity,
                  anchor_reverse::Bool=_default_anchor_reverse(Symbol(cfg.name), variants))
     enzyme = Symbol(cfg.name)
-    d = row_filter(load_dataset(cfg))
+    # Load once, filter as a DataFrame, then build the Dataset from exactly those rows —
+    # so `corpus` IS the fitted corpus and can be snapshotted verbatim to fit_corpus.csv.
+    corpus = row_filter(read_corpus(cfg))
+    d      = dataset_from_corpus(corpus, cfg)
     deploy_keq = cfg.deploy_keq
     mkpath(outdir)
     cells = _cells(enzyme; variants=variants)
@@ -277,7 +287,8 @@ function run_all(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_
     meta = (n_restarts=n_restarts, maxiter=maxiter, maxtime=maxtime, seed=seed,
             n_rows=nrows(d), anchor_reverse=anchor_reverse, variants=variants)
     write_outputs(outdir, d, results; meta=meta, name=String(cfg.name), enzyme=enzyme,
-                 deploy_keq=deploy_keq, anchor_reverse=anchor_reverse)
+                 deploy_keq=deploy_keq, anchor_reverse=anchor_reverse,
+                 corpus=corpus, data_csv=cfg.data_csv)
     results
 end
 
@@ -307,7 +318,8 @@ end
 # is a `[sources]`-pinned dependency that DOES live in a real git checkout in typical dev
 # setups, so its SHA is still meaningful there; `_git_sha` is kept for it, with the same
 # stderr suppression applied.
-function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=nothing)
+function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=nothing,
+                           data_csv::Union{Nothing,AbstractString}=nothing)
     open(joinpath(outdir, "provenance.toml"), "w") do io
         println(io, "# FitRateEquation run provenance (auto-written)")
         println(io, "timestamp       = \"$(Libc.strftime("%Y-%m-%dT%H:%M:%S%z", time()))\"")
@@ -320,6 +332,10 @@ function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=noth
         println(io, "seed            = $(meta.seed)")
         println(io, "n_rows          = $(meta.n_rows)")
         deploy_keq === nothing || println(io, "deploy_keq      = $(deploy_keq)")
+        # Where the corpus came from. Traceability only — fit_corpus.csv, not this path,
+        # is what the plotter reads (a path is a pointer; the file it names can move or
+        # change after the run, a snapshot cannot).
+        data_csv === nothing || println(io, "data_csv        = \"$(abspath(data_csv))\"")
         # Self-describing run: record the reverse-anchor state and the fitted variant(s) so a
         # conflated (anchor_reverse=false) diagnostic run dir is never mistaken for a deploy run.
         hasproperty(meta, :anchor_reverse) &&
@@ -373,8 +389,15 @@ end
 
 function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G6PD",
                        enzyme::Symbol=:G6PD, deploy_keq::Real=median(d.keq),
-                       anchor_reverse::Bool=true)
-    meta === nothing || _write_provenance(outdir, d, meta; deploy_keq=deploy_keq)
+                       anchor_reverse::Bool=true,
+                       corpus::Union{Nothing,DataFrame}=nothing,
+                       data_csv::Union{Nothing,AbstractString}=nothing)
+    meta === nothing || _write_provenance(outdir, d, meta; deploy_keq=deploy_keq,
+                                          data_csv=data_csv)
+    # fit_corpus.csv — the EXACT rows fit (post-row_filter, Molar), so the plotter reads
+    # the corpus back instead of re-deriving it from a config it cannot see. A run dir
+    # written without it is not plottable; see plot_consensus_fit.
+    corpus === nothing || CSV.write(joinpath(outdir, "fit_corpus.csv"), corpus)
     keq = deploy_keq
     # macro_constants.csv (keyed by variant × mode): the classed cha_coords PLUS the derived
     # apparent Michaelis constants (Km_G6P / Km_PGA), so downstream readers see the named
@@ -550,7 +573,7 @@ function _write_pgd_km_pga_block(io, results)
                     "unanchored Mode-1 apparent Km_PGA (", round(km1*1e6; sigdigits=3), " µM) ",
                     "differs from the literature-anchored Mode-2 value (",
                     round(km2*1e6; sigdigits=3), " µM) by ", round(gap; sigdigits=3),
-                    " dex. The corpus pulls Km_PGA high (it lacks sub-Km [6PG] coverage); the ",
+                    " dex. The corpus pulls Km_PGA high (it lacks sub-Km [PGA] coverage); the ",
                     "38–80 µM band is imposed via the anchor (Mode 2/3), not recovered from data.\n")
     catch err
         println(io, "> Km_PGA gap report unavailable ($(err))\n")
@@ -622,7 +645,7 @@ end
     run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true)
 
 Run the deploy-variant × mode consensus macro-constant extraction for G6PD end-to-end and
-write the six artifacts (macro_constants.csv, goodness_of_fit.csv,
+write the seven artifacts (macro_constants.csv, goodness_of_fit.csv, fit_corpus.csv,
 identifiable_functions.csv, micro_parameters.jl, report.md, provenance.toml) to `outdir`
 (default: `./results/G6PD_<date>[_smoke]`). `smoke=true` uses a tiny fit budget for a fast
 sanity check. `nprocs` overrides the local worker-count default (see `setup_workers`); a

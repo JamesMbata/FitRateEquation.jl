@@ -15,7 +15,7 @@ include("core/data.jl")
 include("core/mechbuild.jl")
 include("core/gauge.jl")
 
-export Dataset, load_dataset, nrows
+export Dataset, load_dataset, read_corpus, dataset_from_corpus, nrows
 export gauge_param, free_params, build_params, analytic_kcat
 export _mechanism_steps, _deadend_forms, _deadend_step, _mech, _SIGN_PENALTY
 

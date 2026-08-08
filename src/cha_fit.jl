@@ -407,7 +407,7 @@ end
 #       Km = alpha * Kd / C,   C = 1 + kf/release_rate
 #   (release_rate is the promoted SS-release rate -- koffQ for G6PD, the Ru5P-release koff for
 #   PGD; on the gauge kf=1.0). `which` selects:
-#       :Km_PGA  -> alpha*Kd_PGA/C   (PGD apparent 6PG Michaelis constant)
+#       :Km_PGA  -> alpha*Kd_PGA/C   (PGD apparent PGA Michaelis constant)
 #       :Km_NADP -> alpha*Kd_NADP/C  (PGD or G6PD apparent NADP Michaelis constant)
 #       :Km_G6P  -> alpha*Kd_G6P/C   (G6PD apparent G6P Michaelis constant)
 #   `release_rate` DEFAULTS to `CHA_DEPLOY_RELEASE_RATE` (the koffQ the law is deployed at), so

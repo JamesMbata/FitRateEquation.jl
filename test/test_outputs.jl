@@ -6,7 +6,7 @@ using Test
 @testset "run_all outputs (Cha macro-coord)" begin
     outdir = mktempdir()
     res = run_all(g6pd_config(); outdir=outdir, n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
-    for f in ("macro_constants.csv","goodness_of_fit.csv",
+    for f in ("macro_constants.csv","goodness_of_fit.csv","fit_corpus.csv",
               "identifiable_functions.csv","micro_parameters.jl","report.md")
         @test isfile(joinpath(outdir, f))
     end
@@ -83,4 +83,53 @@ end
     txt = read(joinpath(dir, "provenance.toml"), String)
     @test occursin("deploy_keq", txt)
     @test occursin("13.655", txt)
+end
+
+@testset "fit_corpus.csv snapshots the corpus actually fit" begin
+    bundled = CSV.read(g6pd_config().data_csv, DataFrame)
+
+    # A genuinely different corpus: three of the seven articles. Three (not one) so
+    # leave-one-article-out CV still has non-empty train and test sets per fold.
+    keep = ["Wang2002", "Ozer2002", "Beutler1986"]
+    sub  = bundled[in.(string.(bundled.Article), Ref(Set(keep))), :]
+    @test nrow(sub) < nrow(bundled)
+    tmpcsv = joinpath(mktempdir(), "subset_corpus.csv")
+    CSV.write(tmpcsv, sub)
+
+    outdir = mktempdir()
+    run_all(g6pd_config(; data_csv=tmpcsv); outdir=outdir,
+            n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
+
+    @test isfile(joinpath(outdir, "fit_corpus.csv"))
+    fc = CSV.read(joinpath(outdir, "fit_corpus.csv"), DataFrame)
+
+    # THE REGRESSION: the snapshot is the corpus that was passed in, not the default.
+    # nrow > 0 first — `all` over an empty collection is true, so an empty snapshot would
+    # otherwise satisfy both of the next two assertions.
+    @test nrow(fc) > 0
+    @test all(a -> a in keep, first.(split.(string.(fc.source), "|")))
+    @test nrow(fc) < nrow(bundled)
+
+    # It carries everything the plot renderer needs.
+    for c in (:Rate, :source, :Apparent_Keq, :X_axis_label, :NADP, :G6P, :NADPH, :PGLn, :ATP)
+        @test c in propertynames(fc)
+    end
+
+    # Row count agrees with what the fit actually saw.
+    prov = read(joinpath(outdir, "provenance.toml"), String)
+    @test occursin("n_rows          = $(nrow(fc))", prov)
+
+    # Provenance records where the corpus came from.
+    @test occursin("data_csv        = \"$(abspath(tmpcsv))\"", prov)
+end
+
+@testset "fit_corpus.csv honors row_filter" begin
+    outdir = mktempdir()
+    run_all(g6pd_config(); outdir=outdir, n_restarts=2, maxiter=150, maxtime=5.0, seed=1,
+            variants=[:no_atp], row_filter=FitRateEquation.drop_atp_rows)
+    fc = CSV.read(joinpath(outdir, "fit_corpus.csv"), DataFrame)
+    @test nrow(fc) > 0
+    @test all(fc.ATP .<= 0.0)                 # the filtered-out rows are really gone
+    @test occursin("n_rows          = $(nrow(fc))",
+                   read(joinpath(outdir, "provenance.toml"), String))
 end

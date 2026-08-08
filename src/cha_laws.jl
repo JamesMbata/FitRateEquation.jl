@@ -72,7 +72,7 @@ function cha_rate_G6PD(m; NADP=0.0, G6P=0.0, NADPH=0.0, PGLn=0.0, ATP=0.0, BPG=0
              ATP / Ki_ATP +                     # ATP dead-end on free E (K8)
              (B / Kd_G6P) * (ATP / Ki_ATP_EG) + # ATP dead-end on E.G6P (K9, distinct)
              BPG / Ki_BPG +                     # 2,3-BPG dead-end on free E (comp. vs G6P)
-             (PGA / Ki_PGA) * (1.0 + B / Kd_G6P) # 6PG dead-end on NADP⁺ subsite (comp. vs NADP⁺)
+             (PGA / Ki_PGA) * (1.0 + B / Kd_G6P) # PGA dead-end on NADP⁺ subsite (comp. vs NADP⁺)
 
     # Super-node S = {E_C <-> E_H}, r = P/Kd_6PGLn; SS occupancy and net flux (per free E).
     r     = P / Kd_6PGLn

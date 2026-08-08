@@ -146,7 +146,7 @@ E_H  ⇌ E + NADPH        (SS — promoted NADPH release; super-node {E_C ⇌ E_
 
 ### PGD — random-binding / ordered-release Bi-Ter (Topham 1986)
 
-`NADP + PGA (6PG) ⇌ CO2 + Ru5P + NADPH`. King-Altman skeleton (`src/enzymes/pgd.jl`):
+`NADP + PGA ⇌ CO2 + Ru5P + NADPH`. King-Altman skeleton (`src/enzymes/pgd.jl`):
 
 ```
 E + NADP   ⇌ E_N        ┐ random substrate binding
@@ -183,7 +183,7 @@ budget:
 - **PGD:** the forward cross-term de-conflation was **refuted** on this corpus
   (Mode 1 reports `Ki_NADPH` diagnostic/unconstrained), so it is **pin-only** 17 µM
   (Cottreau) in Modes 2/3. `Km_PGA` is **not data-identified** — `alpha` rails to its
-  bound (the corpus lacks sub-Km [6PG] coverage), so the apparent Km is anchored, not
+  bound (the corpus lacks sub-Km [PGA] coverage), so the apparent Km is anchored, not
   recovered. The high/unstable PGD leave-one-article-out CV traces to a
   **forward-CO₂ product-inhibition coverage gap** (the leave-Weisz1985-out fold);
   trimmed CV ≈ G6PD's.
@@ -288,7 +288,7 @@ FitRateEquation` has loaded, every runner works from any current directory. See
 `README.md` for the novice-level walkthrough; this section is the complete
 reference.
 
-**Exported runners** (each writes the six artifacts below to `outdir` and returns
+**Exported runners** (each writes the seven artifacts below to `outdir` and returns
 the `run_all` results):
 
 ```julia
@@ -327,7 +327,10 @@ run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
   (deploy) + `:full_re` (fully-RE evaluation variant, via `run_pgd_fullre`);
   HK1 `:H1`, `:H4` (not runnable while guarded). `run_all(cfg; variants=[…],
   row_filter=…)` exposes a custom variant set / row filter directly for advanced
-  use.
+  use. A `row_filter` is a `DataFrame -> DataFrame` function applied to the
+  canonical corpus (`read_corpus`'s output) *before* the `Dataset` is built, so the
+  rows it keeps are exactly the rows snapshotted to `fit_corpus.csv`
+  (`drop_atp_rows` is the bundled example).
 - Configs (data CSV, `deploy_keq`, metabolite columns/units) live in
   `src/configs/G6PD.jl`, `src/configs/PGD.jl`, `src/configs/HK1.jl`. The bundled
   corpora resolve via `pkgdir(FitRateEquation)` so they load correctly regardless
@@ -362,7 +365,13 @@ plot_consensus_fit("results/G6PD_2026-07-16_smoke")
 - **`run_dir`** is a results dir (absolute or relative). The **enzyme is
   auto-detected** from `macro_constants.csv`'s content (not the path, so a
   relocated/renamed run dir still resolves); the fitted constants are read back
-  from that file. Output is one `<run_dir>/plots/<variant>_<mode>_fit.png` per row.
+  from that file, and the data points come from that run's own `fit_corpus.csv`.
+  Output is one `<run_dir>/plots/<variant>_<mode>_fit.png` per row.
+- **Run dirs written before 0.2.0 are not plottable** and raise a clear error. They
+  predate `fit_corpus.csv`, and a custom `data_csv` or `row_filter` cannot be
+  recovered from outside the run — earlier versions silently fell back to the bundled
+  default corpus, plotting the fitted law against data it was never fit on. Re-run
+  the fit to get a plottable dir.
 - Each prediction is the **deployed** Cha law: the macro tuple is assembled at
   `CHA_DEPLOY_RELEASE_RATE` and evaluated through `cha_rate_*`, so the curve matches
   the law written to `micro_parameters.jl`. Each figure's curve uses **that
@@ -372,22 +381,24 @@ plot_consensus_fit("results/G6PD_2026-07-16_smoke")
 - **G6PD and PGD only.** HK1 is not yet supported — its corpus lacks the
   `X_axis_label` column the per-figure renderer needs, so pointing the plotter at
   an HK1 run dir raises a clear error rather than rendering.
-- The non-Makie logic (enzyme detection, config lookup, coordinate readback, plot
-  dataframe assembly) lives in `src/plot_support.jl` and is reachable without
+- The non-Makie logic (enzyme detection, config lookup, coordinate readback,
+  `read_fit_corpus`) lives in `src/plot_support.jl` and is reachable without
   loading CairoMakie; only the render loop itself lives in the extension. The first
   invocation after `using CairoMakie` precompiles it (~a few minutes; cached after).
-  Because it only reads `macro_constants.csv`, it never re-runs or perturbs a fit.
+  Because it only reads the run dir (`macro_constants.csv` + `fit_corpus.csv`), it
+  never re-runs or perturbs a fit.
 
 ## Outputs (per run dir)
 
 | File | Contents |
 |---|---|
 | `macro_constants.csv` | Resolved `cha_coords` per mode (class `data_identified` / `literature_pinned` / `unconstrained`) **plus** the derived apparent Michaelis constants (`Km_G6P` / `Km_PGA` / `Km_NADP`, class `derived`). |
+| `fit_corpus.csv` | The exact rows this run fit — Molar units, post-`row_filter`, with `Rate` / `source` (`Article\|Fig`) / `Apparent_Keq` / `X_axis_label`. Makes the run dir self-describing about its corpus; the plotter reads this, never a config default. |
 | `goodness_of_fit.csv` | In-sample loss + leave-one-article-out CV (`mean ± se`) per mode. |
 | `identifiable_functions.csv` | Per-mode eigen-spectrum of the identifiable macro-coordinate subspace. |
 | `micro_parameters.jl` | ODE-ready deploy block — the **closed-form** `ChaDeploy.cha_deploy_micro` inverse of the fitted macro coords (no LM / root-finding; reproduces the law to machine precision). |
 | `report.md` | Per-mode macro tables, cross-mode agreement, the G6PD `koffQ` hybrid block, the PGD `Km_PGA` gap warning, and the de-conflation caveat. |
-| `provenance.toml` | Package version / EnzymeRates SHA, budget, row count, seed, smoke flag — reproducibility record. `_git_sha` reads `"unknown"` in an installed depot (no `.git` to inspect) — this is expected and already `try/catch`-guarded; the package version is the durable provenance handle for an installed copy. |
+| `provenance.toml` | Package version / EnzymeRates SHA, budget, source corpus path (`data_csv`), row count, seed, smoke flag — reproducibility record. `_git_sha` reads `"unknown"` in an installed depot (no `.git` to inspect) — this is expected and already `try/catch`-guarded; the package version is the durable provenance handle for an installed copy. |
 
 `koffQ` is reported as a **hybrid** (`src/cha_koffq_report.jl`): deployed at a
 healthy swept default (flux-neutral), and *additionally* a reverse-weighted
