@@ -387,6 +387,17 @@ plot_consensus_fit("results/G6PD_2026-07-16_smoke")
   invocation after `using CairoMakie` precompiles it (~a few minutes; cached after).
   Because it only reads the run dir (`macro_constants.csv` + `fit_corpus.csv`), it
   never re-runs or perturbs a fit.
+- **Running the render check.** `test/test_plot_render.jl` is not part of the default
+  suite (Makie cold-precompiles for minutes and the file runs a real smoke fit), and
+  CairoMakie is a `[weakdeps]` entry, so it is not loadable from the main project env
+  either. Run it through the committed sub-environment — that env is a `Project.toml`
+  only (no Manifest), so a fresh checkout needs the instantiate step once:
+  ```sh
+  julia --project=test/render -e 'using Pkg; Pkg.instantiate()'   # first run only
+  julia --project=test/render test/test_plot_render.jl
+  ```
+  It fits a deliberately non-default corpus so a regression to config-derived corpora is
+  visible as a row-count failure.
 
 ## Outputs (per run dir)
 
