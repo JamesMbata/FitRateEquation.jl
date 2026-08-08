@@ -77,7 +77,7 @@ end
  row-filtered). Rebuilds the same concretely-typed row NamedTuple vector `load_dataset`
  built, so `d.concs` stays concrete and loss evaluation does not fall back to dynamic
  dispatch."
-function dataset_from_corpus(df::DataFrame, cfg)
+function dataset_from_corpus(df::AbstractDataFrame, cfg)
     metsyms = collect(keys(cfg.metabolites))
     T = NamedTuple{Tuple(metsyms), NTuple{length(metsyms),Float64}}
     concs = T[T(Tuple(Float64(row[s]) for s in metsyms)) for row in eachrow(df)]

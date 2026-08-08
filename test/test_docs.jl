@@ -21,4 +21,14 @@ using Test
     @test occursin("variant/mode/name", agents)
     @test occursin("fitted values are not compared", agents)
     @test !occursin("FITRATEEQ_BYTE_IDENTITY", agents)   # the retired opt-in
+
+    # 0.3.0 contract change: corpus= is required on the exported write_outputs (breaking).
+    # Anchored on wording unique to that sentence — bare "write_outputs" / "corpus" needles
+    # were already satisfied by the Layout file map and 24 unrelated corpus mentions, so they
+    # would have passed before the sentence existed and protected nothing. The anchor stays
+    # markup-free (like the needles above) so reflowing the paragraph or dropping the bold
+    # does not turn it red for a purely cosmetic edit.
+    @test occursin("0.3.0", agents)
+    @test occursin("requires `corpus=`", agents)
+    @test occursin("breaking change", agents)
 end

@@ -305,6 +305,11 @@ function _git_sha(dir)
     end
 end
 
+# `data_csv` is the only user-controlled string written into provenance.toml; a Windows path
+# or one containing a quote would otherwise emit syntactically invalid TOML. The other quoted
+# values (timestamp, versions, git SHA) are package-controlled.
+_toml_escape(s::AbstractString) = replace(s, "\\" => "\\\\", "\"" => "\\\"")
+
 # Self-certifying provenance: the package's own version + the EnzymeRates dependency SHA
 # + the exact fit budget/seed + corpus size, so a run dir is interpretable (full vs smoke,
 # which code) without inferring from dir name.
@@ -335,7 +340,8 @@ function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=noth
         # Where the corpus came from. Traceability only — fit_corpus.csv, not this path,
         # is what the plotter reads (a path is a pointer; the file it names can move or
         # change after the run, a snapshot cannot).
-        data_csv === nothing || println(io, "data_csv        = \"$(abspath(data_csv))\"")
+        data_csv === nothing ||
+            println(io, "data_csv        = \"$(_toml_escape(abspath(data_csv)))\"")
         # Self-describing run: record the reverse-anchor state and the fitted variant(s) so a
         # conflated (anchor_reverse=false) diagnostic run dir is never mistaken for a deploy run.
         hasproperty(meta, :anchor_reverse) &&

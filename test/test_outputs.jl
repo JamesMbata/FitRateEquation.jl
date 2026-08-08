@@ -117,7 +117,7 @@ end
 
     # Row count agrees with what the fit actually saw.
     prov = read(joinpath(outdir, "provenance.toml"), String)
-    @test occursin("n_rows          = $(nrow(fc))", prov)
+    @test occursin("n_rows          = $(nrow(fc))\n", prov)
 
     # Provenance records where the corpus came from.
     @test occursin("data_csv        = \"$(abspath(tmpcsv))\"", prov)
@@ -130,6 +130,6 @@ end
     fc = CSV.read(joinpath(outdir, "fit_corpus.csv"), DataFrame)
     @test nrow(fc) > 0
     @test all(fc.ATP .<= 0.0)                 # the filtered-out rows are really gone
-    @test occursin("n_rows          = $(nrow(fc))",
+    @test occursin("n_rows          = $(nrow(fc))\n",
                    read(joinpath(outdir, "provenance.toml"), String))
 end

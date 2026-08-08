@@ -212,3 +212,17 @@ end
     d = FitRateEquation.Dataset([(; NADP=1e-5, G6P=1e-4)], [1.0], ["Article|1"], [13.7])
     @test_throws "write_outputs requires `corpus=`" write_outputs(mktempdir(), d, NamedTuple[])
 end
+
+@testset "_toml_escape quotes backslashes and quotes" begin
+    @test FitRateEquation._toml_escape("C:\\data\\corpus.csv") == "C:\\\\data\\\\corpus.csv"
+    @test FitRateEquation._toml_escape("odd\"name.csv")        == "odd\\\"name.csv"
+    @test FitRateEquation._toml_escape("/plain/path.csv")      == "/plain/path.csv"
+end
+
+@testset "dataset_from_corpus accepts a SubDataFrame view" begin
+    cfg = g6pd_config()
+    df  = FitRateEquation.read_corpus(cfg)
+    @test nrow(df) > 2
+    d = FitRateEquation.dataset_from_corpus(view(df, 1:2, :), cfg)
+    @test FitRateEquation.nrows(d) == 2
+end

@@ -408,6 +408,12 @@ A `plots/` subdirectory is **not** written by the fit run itself — it is produ
 on demand by `plot_consensus_fit` (see [Plotting the fit over the
 data](#plotting-the-fit-over-the-data) above).
 
+Since **0.3.0**, the exported `write_outputs` **requires `corpus=`** — the exact
+(post-`row_filter`) DataFrame that was fit. This is a **breaking change**: a caller
+that omits it now errors instead of writing a run dir with no `fit_corpus.csv`,
+which the plotter cannot render. `run_all` always passes it, so only direct
+`write_outputs` callers are affected.
+
 ## Determinism: the byte-identity smoke fixtures
 
 `test/fixtures/{g6pd,pgd}_smoke_macro_constants.csv` are committed reference
