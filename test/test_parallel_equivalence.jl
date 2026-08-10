@@ -1,4 +1,5 @@
 using FitRateEquation
+using FitRateEquation: g6pd_config
 using EnzymeRates
 using Distributed
 using Statistics

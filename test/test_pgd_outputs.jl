@@ -1,4 +1,5 @@
 using FitRateEquation
+using FitRateEquation: pgd_config
 using CSV, DataFrames
 using Test
 

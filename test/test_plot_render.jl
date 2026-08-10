@@ -19,6 +19,7 @@
 # regression shows up as wrong row counts here rather than as a silently wrong plot.
 
 using Test, FitRateEquation, CairoMakie, CSV, DataFrames
+using FitRateEquation: g6pd_config
 
 @testset "plot render (CairoMakie, custom corpus)" begin
     bundled = CSV.read(g6pd_config().data_csv, DataFrame)

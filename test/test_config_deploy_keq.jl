@@ -1,4 +1,5 @@
 using FitRateEquation
+using FitRateEquation: g6pd_config, pgd_config, hk1_config
 using Test
 
 @testset "config deploy_keq" begin

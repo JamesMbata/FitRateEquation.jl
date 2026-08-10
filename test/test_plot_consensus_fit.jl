@@ -9,6 +9,7 @@
 # (NOT run by runtests.jl) for the actual render check.
 
 using Test, CSV, DataFrames, FitRateEquation, EnzymeRates
+using FitRateEquation: g6pd_config
 
 @testset "plotter helpers" begin
     @testset "detect_enzyme" begin

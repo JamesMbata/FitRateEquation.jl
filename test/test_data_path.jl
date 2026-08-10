@@ -1,4 +1,5 @@
 using Test, FitRateEquation
+using FitRateEquation: g6pd_config, pgd_config
 
 @testset "data path resolves from any cwd" begin
     cfg = g6pd_config()
