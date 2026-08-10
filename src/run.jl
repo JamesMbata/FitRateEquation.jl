@@ -302,6 +302,39 @@ function fit_consensus_equation(cfg; outdir::AbstractString, n_restarts::Int=8, 
     results
 end
 
+"""
+    fit_consensus_equation(enzyme::Symbol; variants, data_csv, smoke, outdir, nprocs,
+                           anchor_reverse, n_restarts, maxiter, maxtime, seed)
+
+The single entry point. `enzyme` is `:g6pd`, `:pgd`, or `:hk1` (case-insensitive). Selects the
+enzyme's deploy variant by default; pass `variants=[:no_atp]`, `[:full_re]`, `[:no_g6p_atp_deadend]`,
+… to fit an alternative law (its row filter + outdir label are applied automatically). `smoke=true`
+uses the fast plumbing budget. `data_csv` fits your own corpus (canonical columns required).
+Writes the seven artifacts to `outdir` (default `results/<LABEL>_<date>[_smoke]/`) and returns the
+results. `n_restarts`/`maxiter`/`maxtime` override the smoke→budget mapping when given.
+"""
+function fit_consensus_equation(enzyme::Symbol; variants=nothing, data_csv=nothing,
+        smoke::Bool=false, outdir=nothing, nprocs=nothing, anchor_reverse=nothing,
+        n_restarts=nothing, maxiter=nothing, maxtime=nothing, seed::Int=1)
+    enz = _canonical_enzyme(enzyme)
+    enz === :HK1 && !HK1_AVAILABLE &&
+        error("HK1 is not available on this EnzymeRates build (deferred port). See AGENTS.md.")
+    vars = variants === nothing ? run_variants(enz) : Vector{Symbol}(variants)
+    ar   = anchor_reverse === nothing ? _default_anchor_reverse(enz, vars) : anchor_reverse
+    cfg  = _enzyme_config(enz, data_csv)
+    rf   = _combined_row_filter(enz, vars)
+    label = length(vars) == 1 ? variant_profile(enz, vars[1]).label : ""
+    b  = _budget(smoke)
+    nr = n_restarts === nothing ? b.n_restarts : n_restarts
+    mi = maxiter    === nothing ? b.maxiter    : maxiter
+    mt = maxtime    === nothing ? b.maxtime    : maxtime
+    od = outdir === nothing ? _default_outdir(_labeled(String(cfg.name), label), smoke) : outdir
+    setup_workers(nprocs)
+    @info "FitRateEquation run starting" enzyme=enz nworkers=nworkers() smoke outdir=od anchor_reverse=ar variants=vars
+    fit_consensus_equation(cfg; outdir=od, n_restarts=nr, maxiter=mi, maxtime=mt, seed=seed,
+                           variants=vars, row_filter=rf, anchor_reverse=ar)
+end
+
 # Short git SHA of the repo containing `dir`, or "unknown" off a checkout that has no
 # `.git` (an installed package depot, `Pkg.test`'s sandbox, etc.). Stderr is piped to
 # `devnull` so a missing-repo `git` failure never leaks "fatal: not a git repository"
@@ -650,6 +683,40 @@ end
 function _default_outdir(enzyme::AbstractString, smoke::Bool)
     joinpath(pwd(), "results", "$(enzyme)_" * Dates.format(Dates.today(), "yyyy-mm-dd") * (smoke ? "_smoke" : ""))
 end
+
+# Map a user enzyme symbol (:g6pd or :G6PD, any case) to the internal upper-case symbol.
+function _canonical_enzyme(e::Symbol)
+    u = Symbol(uppercase(String(e)))
+    u in (:G6PD, :PGD, :HK1) ||
+        error("fit_consensus_equation: unknown enzyme :$e (expected :g6pd, :pgd, or :hk1)")
+    u
+end
+
+# Build the (internal) config for an enzyme, optionally overriding the bundled corpus path.
+function _enzyme_config(enz::Symbol, data_csv)
+    if enz === :G6PD
+        data_csv === nothing ? g6pd_config() : g6pd_config(; data_csv=data_csv)
+    elseif enz === :PGD
+        data_csv === nothing ? pgd_config() : pgd_config(; data_csv=data_csv)
+    else
+        data_csv === nothing ? hk1_config() : hk1_config(; data_csv=data_csv)
+    end
+end
+
+# One run builds one Dataset, so it can apply only one row filter. Collect the distinct
+# non-identity filters across the selected variants' profiles; >1 is a hard error.
+function _combined_row_filter_check(filters)
+    nonid = unique(f -> objectid(f), [f for f in filters if f !== identity])
+    length(nonid) > 1 && error("fit_consensus_equation: selected variants declare conflicting " *
+        "row filters; a single run can apply only one. Fit them in separate runs.")
+    isempty(nonid) ? identity : nonid[1]
+end
+
+_combined_row_filter(enz::Symbol, variants) =
+    _combined_row_filter_check([variant_profile(enz, v).row_filter for v in variants])
+
+_labeled(name::AbstractString, label::AbstractString) =
+    isempty(label) ? String(name) : string(name, "_", label)
 
 function _run_enzyme(cfg, enzyme::AbstractString; outdir=nothing, smoke::Bool=false, nprocs=nothing,
                      variants=nothing, row_filter=nothing, anchor_reverse::Bool=true)

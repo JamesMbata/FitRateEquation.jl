@@ -23,6 +23,7 @@ using Test
     include("test_rec4_topology_freeze.jl")
     # Run / outputs / modes / parallel determinism
     include("test_variant_profile.jl")
+    include("test_symbol_entry.jl")
     include("test_run_fit.jl")
     include("test_outputs.jl")
     include("test_mode_agreement.jl")
