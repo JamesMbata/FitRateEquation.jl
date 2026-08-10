@@ -127,7 +127,7 @@ end
 # ------------------------------------------------------------------------------------------
 # The plotter reads the rows the run ACTUALLY fit, from <run_dir>/fit_corpus.csv, rather
 # than re-deriving them from a config. It cannot re-derive them: a custom `data_csv` or a
-# `row_filter` passed to `run_all` is invisible from outside the run, so reconstructing the
+# `row_filter` passed to `fit_consensus_equation` is invisible from outside the run, so reconstructing the
 # config from the enzyme alone silently loaded the bundled default corpus instead (fixed in
 # 0.2.0). The snapshot is already in Molar with the renderer's columns, so nothing is
 # recomputed here.

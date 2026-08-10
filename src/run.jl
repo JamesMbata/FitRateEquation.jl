@@ -53,7 +53,7 @@ const _G6PD_ANCHOR_OPTIONAL_VARIANTS = (:no_g6p_nadph_deadend, :no_g6p_atp_deade
 _requires_reverse_anchor(enzyme::Symbol, variant::Symbol) =
     !(enzyme === :G6PD && variant in _G6PD_ANCHOR_OPTIONAL_VARIANTS)
 
-# Default `anchor_reverse` for a `run_all` call: false only when EVERY variant being fit is one
+# Default `anchor_reverse` for a `fit_consensus_equation` call: false only when EVERY variant being fit is one
 # of the anchor-optional ablation variants; true otherwise (unchanged default everywhere else,
 # including any call that mixes an ablation variant with the deploy variant).
 _default_anchor_reverse(enzyme::Symbol, variants::AbstractVector{Symbol}) =
@@ -158,7 +158,7 @@ _cells(enzyme::Symbol=:G6PD; variants::Vector{Symbol}=run_variants(enzyme)) =
 # ---------------------------------------------------------------------------------------
 #   Row filter for the ATP-free fit: drop any row carrying ATP (ATP > 0). The :no_atp law
 #   is ATP-blind, so ATP-inhibited rows would become forced-misfit residuals biasing the
-#   core constants. Used by run_g6pd_noatp.jl as run_all's `row_filter`.
+#   core constants. Used by run_g6pd_noatp.jl as fit_consensus_equation's `row_filter`.
 #
 #   Row filters operate on the canonical corpus DataFrame (read_corpus's output), NOT on
 #   the Dataset, so the rows that survive are exactly the rows snapshotted to
@@ -260,7 +260,7 @@ end
  `row_filter` is a `DataFrame -> DataFrame` function applied to `read_corpus`'s output before
  the `Dataset` is built, so the rows it keeps are exactly the rows fit and the rows written to
  `fit_corpus.csv` (`drop_atp_rows` is the bundled example)."
-function run_all(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_000_000,
+function fit_consensus_equation(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_000_000,
                  maxtime::Real=20.0, seed::Int=1,
                  variants::Vector{Symbol}=run_variants(Symbol(cfg.name)),
                  row_filter=identity,
@@ -394,7 +394,7 @@ function _hk1_h4_derived_rows(enzyme::Symbol, variant::Symbol, coords::AbstractD
 end
 
 # `corpus` is typed `AbstractDataFrame` to match `dataset_from_corpus` (src/core/data.jl): the
-# two are the same seam — `run_all` feeds both from one `row_filter(read_corpus(cfg))` value —
+# two are the same seam — `fit_consensus_equation` feeds both from one `row_filter(read_corpus(cfg))` value —
 # so a view-returning `row_filter` must reach both or neither. Keyword annotations ASSERT, they
 # do not `convert`, so narrowing this back to `DataFrame` would let a view pass the fit and then
 # TypeError here, after the whole run.
@@ -628,7 +628,7 @@ end
 #                    Exported runners: run_g6pd / run_pgd / run_hk1
 # =========================================================================================
 #
-# Thin wrappers around `run_all` that pick the budget (smoke vs full), the default outdir,
+# Thin wrappers around `fit_consensus_equation` that pick the budget (smoke vs full), the default outdir,
 # and spin up workers via `setup_workers`. These are the library replacement for the old
 # per-enzyme launcher scripts (run_g6pd.jl / run_pgd.jl / run_hk1.jl).
 
@@ -647,13 +647,13 @@ function _run_enzyme(cfg, enzyme::AbstractString; outdir=nothing, smoke::Bool=fa
     od = isnothing(outdir) ? _default_outdir(enzyme, smoke) : outdir
     setup_workers(nprocs)
     @info "FitRateEquation run starting" enzyme nworkers=nworkers() smoke outdir=od anchor_reverse
-    # `variants`/`row_filter` are forwarded to `run_all` only when the caller supplies them
+    # `variants`/`row_filter` are forwarded to `fit_consensus_equation` only when the caller supplies them
     # (e.g. `run_g6pd_noatp`'s :no_atp variant + ATP-row filter), so the plain per-enzyme
-    # runners (run_g6pd/run_pgd/run_hk1) keep run_all's own defaults untouched.
+    # runners (run_g6pd/run_pgd/run_hk1) keep fit_consensus_equation's own defaults untouched.
     extra = NamedTuple()
     variants   === nothing || (extra = merge(extra, (variants=variants,)))
     row_filter === nothing || (extra = merge(extra, (row_filter=row_filter,)))
-    run_all(cfg; outdir=od, n_restarts=b.n_restarts, maxiter=b.maxiter, maxtime=b.maxtime,
+    fit_consensus_equation(cfg; outdir=od, n_restarts=b.n_restarts, maxiter=b.maxiter, maxtime=b.maxtime,
             anchor_reverse=anchor_reverse, extra...)
 end
 
@@ -665,7 +665,7 @@ write the seven artifacts (macro_constants.csv, goodness_of_fit.csv, fit_corpus.
 identifiable_functions.csv, micro_parameters.jl, report.md, provenance.toml) to `outdir`
 (default: `./results/G6PD_<date>[_smoke]`). `smoke=true` uses a tiny fit budget for a fast
 sanity check. `nprocs` overrides the local worker-count default (see `setup_workers`); a
-SLURM allocation always overrides `nprocs`. Returns the `run_all` results.
+SLURM allocation always overrides `nprocs`. Returns the `fit_consensus_equation` results.
 
 `anchor_reverse` (default `true`) controls the G6PD reverse-channel anchor. **The deployed
 law REQUIRES `anchor_reverse=true`** — it anchors `Km_NADPH_rev` (3.9 µM) in every mode to
@@ -673,7 +673,7 @@ de-conflate the forward `Ki_NADPH` from the reverse-release Km. `anchor_reverse=
 `Km_NADPH_rev` free, deliberately reintroducing that conflation (forward `Ki_NADPH` becomes
 non-identifiable). It is a **conflation/identifiability DIAGNOSTIC only**: the run is tagged
 `NOT DEPLOYABLE` in `micro_parameters.jl` and `report.md`, and the anchor state is recorded in
-`provenance.toml`. Use it with `variants=[:RE_rate_eq]` via `run_all` to reproduce the
+`provenance.toml`. Use it with `variants=[:RE_rate_eq]` via `fit_consensus_equation` to reproduce the
 original full-RE conflating fit.
 """
 run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true) =
@@ -682,7 +682,7 @@ run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true) =
 """
     run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
 
-The ATP-free (`:no_atp`) G6PD variant: fits `run_all` with `variants=[:no_atp]` and
+The ATP-free (`:no_atp`) G6PD variant: fits `fit_consensus_equation` with `variants=[:no_atp]` and
 `row_filter=drop_atp_rows`, so ATP-bearing rows (ATP > 0) are dropped from the corpus before
 the ATP-blind `:no_atp` mechanism is fit (the ATP-tolerant deploy variant is `run_g6pd`; this
 is the library replacement for the standalone `run_g6pd_noatp.jl` launcher). `data_csv`, if
@@ -705,7 +705,7 @@ run_pgd(;  outdir=nothing, smoke=false, nprocs=nothing) = _run_enzyme(pgd_config
 """
     run_pgd_fullre(; outdir=nothing, smoke=false, nprocs=nothing)
 
-The fully-RE (`:full_re`) PGD variant: fits `run_all` with `variants=[:full_re]` (V1's
+The fully-RE (`:full_re`) PGD variant: fits `fit_consensus_equation` with `variants=[:full_re]` (V1's
 random-RE-binding / ordered-RE-release topology with the ATP effectors OFF), across the three
 PGD modes. Fiber-free — the emitted `micro_parameters.jl` deploy block carries RE binding
 constants, no `koff`/`kon`. Default `run_pgd` (the deployed `:cha_base`) is unchanged; this is a

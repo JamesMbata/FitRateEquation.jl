@@ -111,7 +111,7 @@ Point FitRateEquation.jl at your CSV like this:
 ```julia
 using FitRateEquation
 cfg = g6pd_config(data_csv="/path/to/my_corpus.csv")
-run_all(cfg, outdir="my_results")
+fit_consensus_equation(cfg, outdir="my_results")
 ```
 
 If your columns are named differently, build the config yourself and pass a
@@ -119,6 +119,44 @@ custom `metabolites` mapping (symbol → `(csv_column_name, :uM)`) plus
 `rate_col`, `article_col`, `fig_col`, and `keq_col` — see
 `src/configs/G6PD.jl` in the package source for the exact fields, or the
 deeper reference in [`AGENTS.md`](AGENTS.md).
+
+### Which rate law you're fitting
+
+Each enzyme has one **deployed consensus rate law** — the equation wired into the
+downstream `PentosePhosphatePathway.jl` simulation — plus a few alternative laws
+you can fit for comparison. They all fit the same corpus and write the same seven
+output files; they differ only in the structure of the rate equation (which
+product-release steps are treated as steady-state, and which substrate/product
+"dead-end" inhibitions are included).
+
+The two default runners, `run_g6pd()` and `run_pgd()`, fit the deployed law. Two
+alternatives have their own convenience runner (`run_g6pd_noatp`, `run_pgd_fullre`);
+the rest are selected by passing the variant's name to `fit_consensus_equation`. Below, `fit_consensus_equation(…)`
+is shorthand for:
+
+```julia
+fit_consensus_equation(g6pd_config(); variants=[:variant_name], outdir="my_results")
+```
+
+| Enzyme | Rate law | How to run |
+|---|---|---|
+| G6PD | **Consensus law (deployed)** — random-order Bi-Bi, steady-state NADPH release | `run_g6pd()` |
+| G6PD | ATP-free — ATP dropped as a metabolite (ATP-bearing rows filtered out), for data measured without ATP | `run_g6pd_noatp()` |
+| G6PD | Ablation — drops the E·G6P·ATP dead-end | `fit_consensus_equation(…; variants=[:no_g6p_atp_deadend])` |
+| G6PD | Ablation — drops the E·G6P·NADPH dead-end | `fit_consensus_equation(…; variants=[:no_g6p_nadph_deadend])` |
+| G6PD | Ablation — drops both G6P dead-ends | `fit_consensus_equation(…; variants=[:no_g6p_both_deadends])` |
+| G6PD | Pure rapid-equilibrium form (conflation diagnostic; not deployable) | `fit_consensus_equation(…; variants=[:RE_rate_eq])` |
+| PGD | **Consensus law (deployed)** — Topham Bi-Ter, steady-state Ru5P release | `run_pgd()` |
+| PGD | Fully rapid-equilibrium (evaluation only) | `run_pgd_fullre()` |
+
+Every runner takes the same `smoke`, `nprocs`, and `outdir` keywords as in the
+[Quickstart](#4-quickstart). The three laws with a dedicated runner also have a
+[command-line](#8-command-line) subcommand (`g6pd`, `pgd`, `g6pd-noatp`); the
+ablation, diagnostic, and fully-rapid-equilibrium variants are Julia-only. The
+`:full_re` PGD variant has its own write-up in
+[§10](#10-an-alternative-pgd-rate-law-full_re); for the full technical detail on
+every variant — what each dead-end means and why the ablations exist — see
+[`AGENTS.md`](AGENTS.md).
 
 ## 6. Understanding the outputs
 

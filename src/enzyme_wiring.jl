@@ -1,7 +1,7 @@
 # Per-enzyme wiring registry. Each enzyme contributes its consensus mechanism
 # variants, literature pin values, pin table, and the Ki/Kd/Km alias maps. The
 # generic machinery (mechanisms/pins/macro_collect/identifiability/run) reads the
-# enzyme-specific DATA from here, dispatched by an `enzyme::Symbol` that `run_all`
+# enzyme-specific DATA from here, dispatched by an `enzyme::Symbol` that `fit_consensus_equation`
 # derives from `cfg.name`. Bare calls (tests) infer the enzyme from the mechanism's
 # signature metabolite via `_enzyme_of`.
 
