@@ -169,6 +169,16 @@ function drop_atp_rows(df::DataFrame)
     filter(r -> r.ATP <= 0.0, df)
 end
 
+# Per-(enzyme, variant) run profile: the row filter to apply to the corpus and the outdir
+# label suffix. Centralizes what run_g6pd_noatp/run_pgd_fullre used to hardcode. Selecting a
+# variant now ALWAYS pulls its filter, closing the footgun where a bare variants=[:no_atp]
+# call fit an ATP-blind law to ATP-bearing rows. Default: no filtering, no label.
+function variant_profile(enzyme::Symbol, variant::Symbol)
+    enzyme === :G6PD && variant === :no_atp  && return (row_filter=drop_atp_rows, label="noatp")
+    enzyme === :PGD  && variant === :full_re && return (row_filter=identity,      label="fullre")
+    return (row_filter=identity, label="")
+end
+
 # Flat list of independent fit-tasks across all cells: one `:main` per cell, then one
 # `:fold` per article fold of that cell, in `_article_folds(d)` order. Each task is a
 # small descriptor carrying only identity + row-index subsets + the resolved pins/anchors; the
