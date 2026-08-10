@@ -5,7 +5,7 @@ using Statistics
 using Test
 
 
-# Replicates the serial run_all cell loop on the CHA PATH (using the now-Cha `_fit_and_cv`
+# Replicates the serial fit_consensus_equation cell loop on the CHA PATH (using the now-Cha `_fit_and_cv`
 # + ChaClassify) so the new pmap path can be checked against it. With a maxiter-bound,
 # seeded CMA-ES the fit is a pure function of (data, seed, maxiter), so the pmap path and
 # this serial baseline are BIT-IDENTICAL — the integration test below asserts exact equality
@@ -90,14 +90,14 @@ end
     end
 end
 
-@testset "single-process run_all (pmap) == serial baseline (bit-identical, smoke)" begin
+@testset "single-process fit_consensus_equation (pmap) == serial baseline (bit-identical, smoke)" begin
     # Single-process pool == the serial path; never spawns workers, so it does not
     # contend with any other worktree's workers. The budget is maxiter-bound (seeded
-    # CMA-ES), so run_all's pmap path is bit-identical to the serial baseline.
+    # CMA-ES), so fit_consensus_equation's pmap path is bit-identical to the serial baseline.
     @test nworkers() == 1
     budget = (n_restarts=2, maxiter=150, maxtime=120.0)
 
-    par = run_all(g6pd_config(); outdir=mktempdir(), n_restarts=budget.n_restarts,
+    par = fit_consensus_equation(g6pd_config(); outdir=mktempdir(), n_restarts=budget.n_restarts,
                   maxiter=budget.maxiter, maxtime=budget.maxtime, seed=1)
     ser = _serial_baseline(g6pd_config(); n_restarts=budget.n_restarts,
                            maxiter=budget.maxiter, maxtime=budget.maxtime, seed=1)

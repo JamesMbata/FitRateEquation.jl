@@ -53,7 +53,7 @@ export EnzymeWiring, register_enzyme!
 export consensus_variants
 export macro_constants
 export mode_agreement
-export run_all, write_outputs
+export fit_consensus_equation, write_outputs
 export g6pd_config, pgd_config, hk1_config
 export setup_workers
 export run_g6pd, run_pgd, run_hk1, run_g6pd_noatp, run_pgd_fullre

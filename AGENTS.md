@@ -216,7 +216,7 @@ pin (it is a derived constant, not a coord).
 - **Mode 3** (PGD only) — the explicit `Km_PGA` **hard override** (38 µM) realized as
   a high-weight (100) apparent-Km anchor.
 
-**`anchor_reverse` (G6PD switch, variant-aware default).** `run_all`/`run_g6pd` accept
+**`anchor_reverse` (G6PD switch, variant-aware default).** `fit_consensus_equation`/`run_g6pd` accept
 `anchor_reverse`; when `false`, `resolve_cha_pins` drops the all-modes `Km_NADPH_rev`
 anchor, risking the forward/reverse `Ki_NADPH` conflation. Its default
 (`_default_anchor_reverse`) is `false` only when every variant being fit is one of the
@@ -289,7 +289,7 @@ FitRateEquation` has loaded, every runner works from any current directory. See
 reference.
 
 **Exported runners** (each writes the seven artifacts below to `outdir` and returns
-the `run_all` results):
+the `fit_consensus_equation` results):
 
 ```julia
 using FitRateEquation
@@ -317,15 +317,15 @@ run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
   corpus), then run it directly:
   ```julia
   cfg = g6pd_config(; data_csv="/path/to/my_corpus.csv")   # also pgd_config, hk1_config
-  run_all(cfg; outdir="my_results", n_restarts=48, maxiter=1000)
+  fit_consensus_equation(cfg; outdir="my_results", n_restarts=48, maxiter=1000)
   ```
 - **Fit variants per enzyme:** G6PD `:SS_NADPH_release_rate_eq` (deploy) + `:no_atp`
   (ATP-free, via `run_g6pd_noatp`) + the dead-end-dropped ablations
   `:no_g6p_nadph_deadend`, `:no_g6p_atp_deadend`, `:no_g6p_both_deadends` (no
-  dedicated runners — direct `run_all(cfg; variants=[…], anchor_reverse=…)`, no
+  dedicated runners — direct `fit_consensus_equation(cfg; variants=[…], anchor_reverse=…)`, no
   row filter needed since ATP stays a metabolite in all three); PGD `:cha_base`
   (deploy) + `:full_re` (fully-RE evaluation variant, via `run_pgd_fullre`);
-  HK1 `:H1`, `:H4` (not runnable while guarded). `run_all(cfg; variants=[…],
+  HK1 `:H1`, `:H4` (not runnable while guarded). `fit_consensus_equation(cfg; variants=[…],
   row_filter=…)` exposes a custom variant set / row filter directly for advanced
   use. A `row_filter` is a `DataFrame -> DataFrame` function applied to the
   canonical corpus (`read_corpus`'s output) *before* the `Dataset` is built, so the
@@ -422,7 +422,7 @@ data](#plotting-the-fit-over-the-data) above).
 Since **0.3.0**, the exported `write_outputs` **requires `corpus=`** — the exact
 (post-`row_filter`) DataFrame that was fit. This is a **breaking change**: a caller
 that omits it now errors instead of writing a run dir with no `fit_corpus.csv`,
-which the plotter cannot render. `run_all` always passes it, so only direct
+which the plotter cannot render. `fit_consensus_equation` always passes it, so only direct
 `write_outputs` callers are affected. 0.3.0 also changed the `fit_corpus.csv`
 artifact itself: its metabolite columns are now emitted **sorted alphabetically**
 (G6PD: `ATP, G6P, NADP, NADPH, PGLn`, previously the config `Dict`'s hash order
@@ -455,7 +455,7 @@ anything. Behavioural regressions in the fit path are covered by
 `test_cha_deploy`, `test_cha_classify`, `test_mode_agreement` and the
 goodness-of-fit assertions. Exact reproduction of fit output *is* still gated,
 just not across machines: `test/test_parallel_equivalence.jl` asserts the
-`run_all` pmap path is **bit-identical** to the serial baseline — two runs in the
+`fit_consensus_equation` pmap path is **bit-identical** to the serial baseline — two runs in the
 same process, which is a determinism guarantee the package can actually make.
 
 If a structural comparison fails, that is the gate doing its job: the coordinate set

@@ -18,7 +18,7 @@ using FitRateEquation.ChaFit
 using FitRateEquation.ChaDeploy
 
 # Per-variant expectations: which of {Ki_NADPH, Ki_ATP, Ki_ATP_EG} survive as coords, and the
-# anchor_reverse convention each is fit with (informational here; enforced at run_all call time).
+# anchor_reverse convention each is fit with (informational here; enforced at fit_consensus_equation call time).
 const _DEADEND_VARIANTS = [
     (name=:no_g6p_nadph_deadend, has_nadph=false, has_atp=true,  has_atp_eg=true),
     (name=:no_g6p_atp_deadend,   has_nadph=true,  has_atp=true,  has_atp_eg=false),

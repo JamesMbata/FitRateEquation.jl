@@ -2,9 +2,9 @@ using FitRateEquation
 using CSV, DataFrames
 using Test
 
-@testset "PGD run_all outputs (Cha macro-coord, smoke)" begin
+@testset "PGD fit_consensus_equation outputs (Cha macro-coord, smoke)" begin
     outdir = mktempdir()
-    res = run_all(pgd_config(); outdir=outdir, n_restarts=2, maxiter=150, maxtime=120.0, seed=1)
+    res = fit_consensus_equation(pgd_config(); outdir=outdir, n_restarts=2, maxiter=150, maxtime=120.0, seed=1)
     for f in ("macro_constants.csv","goodness_of_fit.csv","fit_corpus.csv",
               "identifiable_functions.csv","micro_parameters.jl","report.md")
         @test isfile(joinpath(outdir, f))

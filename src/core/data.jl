@@ -35,7 +35,7 @@ end
  µM->M, build per-row concs/group/keq. Group key is Article|Fig.
 
  Thin composition of `read_corpus` (CSV -> canonical DataFrame) and `dataset_from_corpus`.
- Signature and values are unchanged; the split exists so `run_all` can snapshot the exact
+ Signature and values are unchanged; the split exists so `fit_consensus_equation` can snapshot the exact
  rows it fit (`fit_corpus.csv`) without a second, drift-prone loader."
 load_dataset(cfg) = dataset_from_corpus(read_corpus(cfg), cfg)
 

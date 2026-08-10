@@ -128,7 +128,7 @@ end
                    source = ["A|1", "A|1", "A|1"],
                    Apparent_Keq = [13.7, 13.7, 13.7])
     df2 = FitRateEquation.drop_atp_rows(df)
-    # Must be a materialized DataFrame, not a view — `run_all` documents `row_filter` as
+    # Must be a materialized DataFrame, not a view — `fit_consensus_equation` documents `row_filter` as
     # `DataFrame -> DataFrame` and this is the bundled example of one, so the type is part of
     # the contract a `subset(…; view=true)` rewrite would silently change while keeping every
     # other assertion here green. (The pipeline itself no longer breaks on a view: since 0.3.0
