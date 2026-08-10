@@ -37,7 +37,7 @@ using Test, FitRateEquation, CairoMakie, CSV, DataFrames
     # deploy variants, anchor_reverse and seed all keep their defaults, and the explicit
     # budget is the smoke budget (`_budget(true)`). No workers are added, so this is the
     # serial path — the `nprocs=1` of a `run_g6pd(smoke=true, nprocs=1)` call.
-    fit_consensus_equation(g6pd_config(; data_csv=tmpcsv); outdir=out,
+    FitRateEquation._fit_consensus(g6pd_config(; data_csv=tmpcsv); outdir=out,
             n_restarts=2, maxiter=150, maxtime=120.0)
 
     # The plotter's own reader sees the run's corpus, not the bundled default.

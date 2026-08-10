@@ -220,7 +220,7 @@ end
 end
 
 @testset "a SubDataFrame view survives the whole dataset_from_corpus -> write_outputs seam" begin
-    # `fit_consensus_equation` feeds one `row_filter(read_corpus(cfg))` value to BOTH ends, so testing them
+    # `_fit_consensus` feeds one `row_filter(read_corpus(cfg))` value to BOTH ends, so testing them
     # separately proves nothing: with only the first assertion, narrowing `write_outputs`'
     # `corpus=` back to `DataFrame` stays green here while a view-returning `row_filter` runs
     # the entire fit and only then dies on a bare TypeError. Both ends are asserted on the

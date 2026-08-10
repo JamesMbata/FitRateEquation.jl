@@ -257,7 +257,11 @@ function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbo
     results
 end
 
-"Run the deploy variant × per-enzyme modes end-to-end and write all artifacts. The
+"Internal config-object entry point behind the public `fit_consensus_equation(enzyme::Symbol; …)`
+ method: takes a fully-resolved enzyme config object and runs the deploy variant × per-enzyme
+ modes end-to-end, writing all artifacts. Not exported — the symbol method resolves the config,
+ budget, row filter, and worker pool, then forwards here; tests that need explicit worker control
+ or the raw cfg-default budget call it path-qualified as `FitRateEquation._fit_consensus`. The
  `n_cells × (1 + n_articles)` independent fits are dispatched via `pmap` over a
  `CachingPool` (a 1-process pool is the serial path); `pmap` order preservation + the
  identity-derived per-cell seed make the reduced output byte-identical at any worker count.
@@ -270,7 +274,7 @@ end
  `row_filter` is a `DataFrame -> DataFrame` function applied to `read_corpus`'s output before
  the `Dataset` is built, so the rows it keeps are exactly the rows fit and the rows written to
  `fit_corpus.csv` (`drop_atp_rows` is the bundled example)."
-function fit_consensus_equation(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_000_000,
+function _fit_consensus(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter::Int=1_000_000,
                  maxtime::Real=20.0, seed::Int=1,
                  variants::Vector{Symbol}=run_variants(Symbol(cfg.name)),
                  row_filter=identity,
@@ -331,8 +335,8 @@ function fit_consensus_equation(enzyme::Symbol; variants=nothing, data_csv=nothi
     od = outdir === nothing ? _default_outdir(_labeled(String(cfg.name), label), smoke) : outdir
     setup_workers(nprocs)
     @info "FitRateEquation run starting" enzyme=enz nworkers=nworkers() smoke outdir=od anchor_reverse=ar variants=vars
-    fit_consensus_equation(cfg; outdir=od, n_restarts=nr, maxiter=mi, maxtime=mt, seed=seed,
-                           variants=vars, row_filter=rf, anchor_reverse=ar)
+    _fit_consensus(cfg; outdir=od, n_restarts=nr, maxiter=mi, maxtime=mt, seed=seed,
+                   variants=vars, row_filter=rf, anchor_reverse=ar)
 end
 
 # Short git SHA of the repo containing `dir`, or "unknown" off a checkout that has no

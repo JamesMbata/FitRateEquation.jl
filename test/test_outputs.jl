@@ -6,7 +6,7 @@ using Test
 
 @testset "fit_consensus_equation outputs (Cha macro-coord)" begin
     outdir = mktempdir()
-    res = fit_consensus_equation(g6pd_config(); outdir=outdir, n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
+    res = FitRateEquation._fit_consensus(g6pd_config(); outdir=outdir, n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
     for f in ("macro_constants.csv","goodness_of_fit.csv","fit_corpus.csv",
               "identifiable_functions.csv","micro_parameters.jl","report.md")
         @test isfile(joinpath(outdir, f))
@@ -54,7 +54,7 @@ end
 @testset "anchor_reverse: variant-aware default + per-variant NOT DEPLOYABLE banner" begin
     # Ablation variant: default anchor_reverse is now false, and its output carries no banner.
     outdir1 = mktempdir()
-    fit_consensus_equation(g6pd_config(); outdir=outdir1, variants=[:no_g6p_atp_deadend],
+    FitRateEquation._fit_consensus(g6pd_config(); outdir=outdir1, variants=[:no_g6p_atp_deadend],
             n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
     @test occursin("anchor_reverse  = false", read(joinpath(outdir1, "provenance.toml"), String))
     @test !occursin("NOT DEPLOYABLE", read(joinpath(outdir1, "micro_parameters.jl"), String))
@@ -62,14 +62,14 @@ end
 
     # Deploy variant: default anchor_reverse is unaffected (still true), no banner.
     outdir2 = mktempdir()
-    fit_consensus_equation(g6pd_config(); outdir=outdir2, n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
+    FitRateEquation._fit_consensus(g6pd_config(); outdir=outdir2, n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
     @test occursin("anchor_reverse  = true", read(joinpath(outdir2, "provenance.toml"), String))
     @test !occursin("NOT DEPLOYABLE", read(joinpath(outdir2, "micro_parameters.jl"), String))
 
     # Forcing anchor_reverse=false on the deploy variant (which still requires it) still bans
     # deployment -- the banner is scoped per-variant, not removed globally.
     outdir3 = mktempdir()
-    fit_consensus_equation(g6pd_config(); outdir=outdir3, n_restarts=2, maxiter=150, maxtime=5.0, seed=1,
+    FitRateEquation._fit_consensus(g6pd_config(); outdir=outdir3, n_restarts=2, maxiter=150, maxtime=5.0, seed=1,
             anchor_reverse=false)
     @test occursin("NOT DEPLOYABLE", read(joinpath(outdir3, "micro_parameters.jl"), String))
     @test occursin("NOT DEPLOYABLE", read(joinpath(outdir3, "report.md"), String))
@@ -98,7 +98,7 @@ end
     CSV.write(tmpcsv, sub)
 
     outdir = mktempdir()
-    fit_consensus_equation(g6pd_config(; data_csv=tmpcsv); outdir=outdir,
+    FitRateEquation._fit_consensus(g6pd_config(; data_csv=tmpcsv); outdir=outdir,
             n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
 
     @test isfile(joinpath(outdir, "fit_corpus.csv"))
@@ -126,7 +126,7 @@ end
 
 @testset "fit_corpus.csv honors row_filter" begin
     outdir = mktempdir()
-    fit_consensus_equation(g6pd_config(); outdir=outdir, n_restarts=2, maxiter=150, maxtime=5.0, seed=1,
+    FitRateEquation._fit_consensus(g6pd_config(); outdir=outdir, n_restarts=2, maxiter=150, maxtime=5.0, seed=1,
             variants=[:no_atp], row_filter=FitRateEquation.drop_atp_rows)
     fc = CSV.read(joinpath(outdir, "fit_corpus.csv"), DataFrame)
     @test nrow(fc) > 0
@@ -142,7 +142,7 @@ end
     @test Set(mets) == Set(keys(cfg.metabolites))
 
     outdir = mktempdir()
-    fit_consensus_equation(cfg; outdir=outdir, n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
+    FitRateEquation._fit_consensus(cfg; outdir=outdir, n_restarts=2, maxiter=150, maxtime=5.0, seed=1)
     fc = CSV.read(joinpath(outdir, "fit_corpus.csv"), DataFrame)
 
     # The metabolite columns come first, in metabolite_syms order — not Dict hash order.
