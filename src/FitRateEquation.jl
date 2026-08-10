@@ -56,7 +56,7 @@ export mode_agreement
 export fit_consensus_equation, write_outputs
 export g6pd_config, pgd_config, hk1_config
 export setup_workers
-export run_g6pd, run_pgd, run_hk1, run_g6pd_noatp, run_pgd_fullre
+export run_g6pd, run_pgd, run_hk1
 export cli_main
 
 # plot_consensus_fit stub — the real method lives in the CairoMakie package extension.
