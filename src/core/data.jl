@@ -51,6 +51,21 @@ const _RESERVED_CORPUS_COLS = (:Rate, :source, :Apparent_Keq, :X_axis_label)
 # Sorting once here makes all three stable and provably identical to each other.
 metabolite_syms(cfg) = sort(collect(keys(cfg.metabolites)))
 
+# Validate that a raw corpus DataFrame carries every column the config requires (metabolite
+# source columns + rate/article/fig/keq). Extra annotation columns are allowed and ignored.
+# "no custom columns" here means no remapping/bring-your-own-schema — the required columns
+# must be present under their canonical names. Errors early with the full expected header.
+function _validate_corpus_columns(raw::AbstractDataFrame, cfg)
+    required = String[cfg.metabolites[s][1] for s in metabolite_syms(cfg)]
+    append!(required, String[cfg.rate_col, cfg.article_col, cfg.fig_col, cfg.keq_col])
+    have    = Set(names(raw))
+    missing_cols = [c for c in required if !(c in have)]
+    isempty(missing_cols) && return nothing
+    error("read_corpus: corpus $(cfg.data_csv) is missing required column(s): " *
+          join(missing_cols, ", ") * ".\nExpected columns (extra columns are allowed): " *
+          join(required, ", ") * ".")
+end
+
 "Read the corpus CSV into the canonical fit DataFrame: one Molar column per metabolite
  symbol, plus Rate / source (Article|Fig) / Apparent_Keq, with zero, blank and non-finite
  rate rows dropped. `X_axis_label` is carried through when the corpus has it (G6PD/PGD do;
@@ -60,6 +75,7 @@ metabolite_syms(cfg) = sort(collect(keys(cfg.metabolites)))
  it, so they cannot drift apart."
 function read_corpus(cfg)
     raw = CSV.read(cfg.data_csv, DataFrame)
+    _validate_corpus_columns(raw, cfg)
     for s in metabolite_syms(cfg)
         s in _RESERVED_CORPUS_COLS && error(
             "read_corpus: config metabolite key :$s collides with a reserved corpus " *

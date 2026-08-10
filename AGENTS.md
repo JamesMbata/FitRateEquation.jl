@@ -63,7 +63,7 @@ deploy (promoted) variant per enzyme** — it is not a multi-variant panel:
   `s = CO2/Kd_CO2`.
 
 An **additive** fully-rapid-equilibrium PGD variant, **`:full_re`**, is also
-registered (run it with `run_pgd_fullre`). It keeps only catalysis at steady state
+registered (run it with `fit_consensus_equation(:pgd; variants=[:full_re])`). It keeps only catalysis at steady state
 and makes *every* product release a rapid-equilibrium dissociation (ordered
 CO₂ → Ru5P → NADPH), so there is **no promoted SS-release fiber** (`C = 1`,
 apparent Km = α·Kd) and NADPH becomes a **competitive free-E ligand**. The law is
@@ -288,18 +288,35 @@ FitRateEquation` has loaded, every runner works from any current directory. See
 `README.md` for the novice-level walkthrough; this section is the complete
 reference.
 
-**Exported runners** (each writes the seven artifacts below to `outdir` and returns
-the `fit_consensus_equation` results):
+**One documented entry point** — `fit_consensus_equation(enzyme::Symbol; …)` (writes
+the seven artifacts below to `outdir` and returns the results):
 
 ```julia
 using FitRateEquation
 
-run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing)
-run_pgd(;  outdir=nothing, smoke=false, nprocs=nothing)
-run_pgd_fullre(; outdir=nothing, smoke=false, nprocs=nothing)   # additive :full_re PGD variant, not deployed
-run_hk1(;  outdir=nothing, smoke=false, nprocs=nothing)         # errors: HK1 guarded, see above
-run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
+fit_consensus_equation(:g6pd | :pgd | :hk1;
+    variants=nothing, data_csv=nothing, smoke=false, outdir=nothing, nprocs=nothing,
+    anchor_reverse=nothing,                    # G6PD-only; variant-aware default (below)
+    n_restarts=nothing, maxiter=nothing, maxtime=nothing, seed=nothing)  # power-user budget
 ```
+
+The enzyme selector is symbol-only and case-insensitive. `variants` names alternative
+laws (`[:no_atp]`, `[:full_re]`, `[:no_g6p_atp_deadend]`, …); omitting it fits the
+deployed consensus law. Selecting a variant applies its bundled `row_filter` and names
+the output folder after it.
+
+**Thin discoverability aliases** (deployed-law calls; each forwards to
+`fit_consensus_equation`):
+
+```julia
+run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true)
+run_pgd(;  outdir=nothing, smoke=false, nprocs=nothing)
+run_hk1(;  outdir=nothing, smoke=false, nprocs=nothing)   # errors: HK1 guarded, see above
+```
+
+There is no `run_g6pd_noatp` / `run_pgd_fullre`: use
+`fit_consensus_equation(:g6pd; variants=[:no_atp])` and
+`fit_consensus_equation(:pgd; variants=[:full_re])`.
 
 - `smoke=true` → `n_restarts=2, maxiter=150` (vs full `n_restarts=48, maxiter=1000`)
   — fast plumbing check, not a fit to trust.
@@ -311,43 +328,52 @@ run_g6pd_noatp(; outdir=nothing, smoke=false, nprocs=nothing, data_csv=nothing)
   `setup_workers` detects it (`SLURM_JOB_CPUS_PER_NODE`) and uses `SlurmManager`
   instead, sized to the allocation — `nprocs` is ignored in that case.
 - Default `outdir`: `./results/<ENZYME>_<YYYY-MM-DD>[_smoke]/` (relative to the
-  caller's `pwd()`), e.g. `results/G6PD_2026-07-16_smoke/`. `run_g6pd_noatp`'s
-  default is labeled `G6PD_noatp_...` so it never collides with plain `run_g6pd`.
-- **Own data:** build a config pointing at your CSV (same schema as the bundled
-  corpus), then run it directly:
+  caller's `pwd()`), e.g. `results/G6PD_2026-07-16_smoke/`. A variant run is labeled
+  after the variant (e.g. `G6PD_noatp_...`) so it never collides with the deployed-law
+  run.
+- **Own data:** point the entry point at your CSV via `data_csv`. The file must use
+  the enzyme's **canonical column schema** (a non-conforming header errors, printing
+  the header it expected); column remapping is not supported.
   ```julia
-  cfg = g6pd_config(; data_csv="/path/to/my_corpus.csv")   # also pgd_config, hk1_config
-  fit_consensus_equation(cfg; outdir="my_results", n_restarts=48, maxiter=1000)
+  fit_consensus_equation(:g6pd; data_csv="/path/to/my_corpus.csv", outdir="my_results")
   ```
 - **Fit variants per enzyme:** G6PD `:SS_NADPH_release_rate_eq` (deploy) + `:no_atp`
-  (ATP-free, via `run_g6pd_noatp`) + the dead-end-dropped ablations
-  `:no_g6p_nadph_deadend`, `:no_g6p_atp_deadend`, `:no_g6p_both_deadends` (no
-  dedicated runners — direct `fit_consensus_equation(cfg; variants=[…], anchor_reverse=…)`, no
-  row filter needed since ATP stays a metabolite in all three); PGD `:cha_base`
-  (deploy) + `:full_re` (fully-RE evaluation variant, via `run_pgd_fullre`);
-  HK1 `:H1`, `:H4` (not runnable while guarded). `fit_consensus_equation(cfg; variants=[…],
-  row_filter=…)` exposes a custom variant set / row filter directly for advanced
-  use. A `row_filter` is a `DataFrame -> DataFrame` function applied to the
+  (ATP-free) + the dead-end-dropped ablations `:no_g6p_nadph_deadend`,
+  `:no_g6p_atp_deadend`, `:no_g6p_both_deadends`; PGD `:cha_base` (deploy) + `:full_re`
+  (fully-RE evaluation variant); HK1 `:H1`, `:H4` (not runnable while guarded). All are
+  selected the same way — `fit_consensus_equation(:enzyme; variants=[…])` — with no
+  dedicated runners; each variant carries its own `row_filter`, so e.g. `:no_atp` drops
+  the ATP-bearing rows while the G6P dead-end ablations keep ATP a metabolite. The
+  internal `fit_consensus_equation(cfg; variants=[…], row_filter=…)` method (a config
+  object plus explicit filter) exposes a custom variant set / row filter for advanced
+  in-package use. A `row_filter` is a `DataFrame -> DataFrame` function applied to the
   canonical corpus (`read_corpus`'s output) *before* the `Dataset` is built, so the
   rows it keeps are exactly the rows snapshotted to `fit_corpus.csv`
   (`drop_atp_rows` is the bundled example).
-- Configs (data CSV, `deploy_keq`, metabolite columns/units) live in
-  `src/configs/G6PD.jl`, `src/configs/PGD.jl`, `src/configs/HK1.jl`. The bundled
-  corpora resolve via `pkgdir(FitRateEquation)` so they load correctly regardless
-  of installation location; `data_csv` overrides them. The fit itself uses each
-  figure's own apparent Keq, read per-row from the corpus `keq_col` column; the
-  config's `deploy_keq` is the single readout/deploy value — G6PD `13.655` (apparent
-  Keq at cellular pH 7.2 / 37 °C), PGD `0.17` (pH-flat Bi-Ter CO₂ aq, 37 °C).
+- **Config builders are internal, not exported.** `FitRateEquation.g6pd_config` /
+  `pgd_config` / `hk1_config` (data CSV, `deploy_keq`, metabolite columns/units) live in
+  `src/configs/G6PD.jl`, `src/configs/PGD.jl`, `src/configs/HK1.jl` and are the objects
+  the symbol entry point resolves internally — user code does not build them; it passes
+  `data_csv=` to `fit_consensus_equation(:enzyme; …)`. The bundled corpora resolve via
+  `pkgdir(FitRateEquation)` so they load correctly regardless of installation location;
+  `data_csv` overrides them, and its header must match the canonical schema. The fit
+  itself uses each figure's own apparent Keq, read per-row from the corpus `keq_col`
+  column; the config's `deploy_keq` is the single readout/deploy value — G6PD `13.655`
+  (apparent Keq at cellular pH 7.2 / 37 °C), PGD `0.17` (pH-flat Bi-Ter CO₂ aq, 37 °C).
 
 **CLI** — a thin shim (`bin/fitrateequation`, `using FitRateEquation;
-cli_main(ARGS)`) dispatching the same runners in-process, no subprocess:
+cli_main(ARGS)`) dispatching `fit_consensus_equation` in-process, no subprocess:
 
 ```sh
-bin/fitrateequation <g6pd|pgd|g6pd-noatp|hk1> [--smoke] [--nprocs N] [--outdir DIR]
-bin/fitrateequation g6pd-noatp [--data CSV]
+bin/fitrateequation <g6pd|pgd|hk1> [--smoke] [--nprocs N] [--outdir DIR] [--data CSV] [--variant NAME]
 bin/fitrateequation plot <run_dir>
 bin/fitrateequation help
 ```
+
+Subcommands are `g6pd | pgd | hk1 | plot | help`. `--data` and `--variant` are valid
+with any enzyme subcommand (`--variant NAME` fits an alternative law, e.g. `no_atp`,
+`full_re`, `no_g6p_atp_deadend`); the old `g6pd-noatp` subcommand is gone — use
+`g6pd --variant no_atp`.
 
 ### Plotting the fit over the data
 

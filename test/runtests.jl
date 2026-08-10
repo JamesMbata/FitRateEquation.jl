@@ -3,6 +3,7 @@ using Test
 @testset "FitRateEquation" begin
     include("test_data_path.jl")
     include("test_data.jl")
+    include("test_schema_validation.jl")
     include("test_mechanisms.jl")
     include("test_cv.jl")
     include("test_promotable.jl")
@@ -21,6 +22,8 @@ using Test
     include("test_cha_g6pd_deadend_variants.jl")
     include("test_rec4_topology_freeze.jl")
     # Run / outputs / modes / parallel determinism
+    include("test_variant_profile.jl")
+    include("test_symbol_entry.jl")
     include("test_run_fit.jl")
     include("test_outputs.jl")
     include("test_mode_agreement.jl")

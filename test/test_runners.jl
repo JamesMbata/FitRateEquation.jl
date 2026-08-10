@@ -13,15 +13,13 @@ end
     FitRateEquation.HK1_AVAILABLE || @test_throws ErrorException run_hk1(smoke=true, nprocs=1, outdir=mktempdir())
 end
 
-@testset "run_pgd_fullre smoke writes artifacts (:full_re deploy block non-empty)" begin
-    out = mktempdir()
-    res = run_pgd_fullre(smoke=true, nprocs=1, outdir=out)
-    @test res !== nothing
-    @test all(r -> r.variant === :full_re, res)
-    @test Set(r.mode for r in res) == Set((:mode1, :mode2, :mode3))
-    @test isfile(joinpath(out, "micro_parameters.jl"))
-    @test filesize(joinpath(out, "micro_parameters.jl")) > 0
-    mp = read(joinpath(out, "micro_parameters.jl"), String)
-    @test occursin("full_re_mode1_K_NADPH_E", mp)      # fiber-free deploy succeeded
-    @test !occursin("koff_Ru5P_ENADPH", mp)            # no SS-release fiber param emitted
+@testset "run_* wrappers forward to the symbol entry" begin
+    dir = mktempdir()
+    r1 = run_g6pd(; smoke=true, nprocs=1, outdir=joinpath(dir, "a"))
+    r2 = fit_consensus_equation(:g6pd; smoke=true, nprocs=1, outdir=joinpath(dir, "b"))
+    @test length(r1) == length(r2)   # same cell set
+
+    # noatp is now a variant, not a runner
+    @test !isdefined(FitRateEquation, :run_g6pd_noatp)
+    @test !isdefined(FitRateEquation, :run_pgd_fullre)
 end

@@ -1,4 +1,5 @@
 using FitRateEquation
+using FitRateEquation: g6pd_config, pgd_config, hk1_config
 using EnzymeRates
 using CSV
 using DataFrames

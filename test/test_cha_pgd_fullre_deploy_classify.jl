@@ -1,4 +1,5 @@
 using FitRateEquation
+using FitRateEquation: pgd_config
 using EnzymeRates
 using Statistics: median
 using Random

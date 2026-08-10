@@ -19,6 +19,7 @@
 # regression shows up as wrong row counts here rather than as a silently wrong plot.
 
 using Test, FitRateEquation, CairoMakie, CSV, DataFrames
+using FitRateEquation: g6pd_config
 
 @testset "plot render (CairoMakie, custom corpus)" begin
     bundled = CSV.read(g6pd_config().data_csv, DataFrame)
@@ -32,12 +33,12 @@ using Test, FitRateEquation, CairoMakie, CSV, DataFrames
     CSV.write(tmpcsv, sub)
 
     out = mktempdir()
-    # `run_g6pd` takes no `data_csv` (only `run_g6pd_noatp` does), so the corpus override
+    # `run_g6pd` exposes no `data_csv` kwarg (the symbol method `fit_consensus_equation(:g6pd; …)` does), so the corpus override
     # goes in through the config, exactly as run_g6pd's own body would then run it: the
     # deploy variants, anchor_reverse and seed all keep their defaults, and the explicit
     # budget is the smoke budget (`_budget(true)`). No workers are added, so this is the
     # serial path — the `nprocs=1` of a `run_g6pd(smoke=true, nprocs=1)` call.
-    fit_consensus_equation(g6pd_config(; data_csv=tmpcsv); outdir=out,
+    FitRateEquation._fit_consensus(g6pd_config(; data_csv=tmpcsv); outdir=out,
             n_restarts=2, maxiter=150, maxtime=120.0)
 
     # The plotter's own reader sees the run's corpus, not the bundled default.

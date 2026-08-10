@@ -1,4 +1,5 @@
 using FitRateEquation
+using FitRateEquation: g6pd_config
 using EnzymeRates
 using Distributed
 using Statistics
@@ -97,7 +98,7 @@ end
     @test nworkers() == 1
     budget = (n_restarts=2, maxiter=150, maxtime=120.0)
 
-    par = fit_consensus_equation(g6pd_config(); outdir=mktempdir(), n_restarts=budget.n_restarts,
+    par = FitRateEquation._fit_consensus(g6pd_config(); outdir=mktempdir(), n_restarts=budget.n_restarts,
                   maxiter=budget.maxiter, maxtime=budget.maxtime, seed=1)
     ser = _serial_baseline(g6pd_config(); n_restarts=budget.n_restarts,
                            maxiter=budget.maxiter, maxtime=budget.maxtime, seed=1)

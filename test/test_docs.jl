@@ -9,6 +9,35 @@ using Test
     @test !occursin("ConsensusMacro", agents)
     @test !occursin("run from the repo root", agents)   # repo-root rule removed
 
+    # Unified entry point: fit_consensus_equation(:enzyme; …) is THE documented entry;
+    # run_g6pd/run_pgd/run_hk1 survive only as thin aliases (Task 8 of the refactor).
+    @test occursin("fit_consensus_equation", readme)
+    @test occursin("fit_consensus_equation", agents)
+
+    # The per-variant convenience runners were deleted — a variant is now a keyword on
+    # the single entry point, never its own function. These names must not resurface as
+    # live API in the user guide (README). AGENTS.md keeps a past-tense migration note,
+    # so it is deliberately exempt from the absence check.
+    @test !occursin("run_g6pd_noatp", readme)
+    @test !occursin("run_pgd_fullre", readme)
+
+    # Config builders (g6pd_config/pgd_config/hk1_config) are UN-EXPORTED internals; the
+    # own-data path is fit_consensus_equation(:enzyme; data_csv=…). They must not appear
+    # anywhere in the human user guide as an API the reader is told to call.
+    @test !occursin("g6pd_config", readme)
+    @test !occursin("pgd_config", readme)
+    @test !occursin("hk1_config", readme)
+
+    # Own-data contract: data_csv= entry + canonical (non-remappable) column schema.
+    @test occursin("data_csv", readme)
+    @test occursin("canonical", readme)
+    @test occursin("canonical", agents)
+
+    # CLI: --variant NAME replaces the removed g6pd-noatp subcommand, and --data now works
+    # for any enzyme subcommand. Both README §8 and the AGENTS.md CLI block document it.
+    @test occursin("--variant", readme)
+    @test occursin("--variant", agents)
+
     # 0.2.0 artifact + contract changes must be documented, not just implemented.
     @test occursin("fit_corpus.csv", readme)
     @test occursin("fit_corpus.csv", agents)
