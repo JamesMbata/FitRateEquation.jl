@@ -85,9 +85,8 @@ one means.
 ## 5. Run on your own data
 
 If you have your own enzyme-kinetics measurements, you can fit them the same
-way, as long as your CSV file has the right columns. For G6PD, the columns
-FitRateEquation.jl expects (by default; you can point it at differently named
-columns too — see below) are:
+way, as long as your CSV file uses the right columns. For G6PD, the columns
+FitRateEquation.jl expects are:
 
 | Column | What it is | Units |
 |---|---|---|
@@ -106,19 +105,20 @@ together (so the fit knows which points were measured under the same
 calibration) — they don't need to mean anything beyond "this row came from
 this figure of this paper."
 
+Your CSV must use the **exact** column names in the table above — this is a
+fixed, canonical schema. A file with differently named columns is rejected with
+an error that prints the header it expected, so you can rename your columns to
+match. Column *remapping* (pointing the fitter at differently named columns) is
+not supported. Extra annotation columns you don't need are allowed and ignored.
+
 Point FitRateEquation.jl at your CSV like this:
 
 ```julia
 using FitRateEquation
-cfg = g6pd_config(data_csv="/path/to/my_corpus.csv")
-fit_consensus_equation(cfg, outdir="my_results")
+fit_consensus_equation(:g6pd; data_csv="/path/to/my_corpus.csv")
 ```
 
-If your columns are named differently, build the config yourself and pass a
-custom `metabolites` mapping (symbol → `(csv_column_name, :uM)`) plus
-`rate_col`, `article_col`, `fig_col`, and `keq_col` — see
-`src/configs/G6PD.jl` in the package source for the exact fields, or the
-deeper reference in [`AGENTS.md`](AGENTS.md).
+Add `outdir="my_results"` to choose where the output folder is written.
 
 ### Which rate law you're fitting
 
@@ -129,34 +129,32 @@ output files; they differ only in the structure of the rate equation (which
 product-release steps are treated as steady-state, and which substrate/product
 "dead-end" inhibitions are included).
 
-The two default runners, `run_g6pd()` and `run_pgd()`, fit the deployed law. Two
-alternatives have their own convenience runner (`run_g6pd_noatp`, `run_pgd_fullre`);
-the rest are selected by passing the variant's name to `fit_consensus_equation`. Below, `fit_consensus_equation(…)`
-is shorthand for:
-
-```julia
-fit_consensus_equation(g6pd_config(); variants=[:variant_name], outdir="my_results")
-```
+There is one entry point for every fit: `fit_consensus_equation(:g6pd | :pgd | :hk1)`.
+By default it fits that enzyme's deployed consensus law; to fit an alternative law
+instead, name the variant with the `variants` keyword. `run_g6pd()` / `run_pgd()` /
+`run_hk1()` are thin aliases for the deployed-law call, kept for discoverability.
 
 | Enzyme | Rate law | How to run |
 |---|---|---|
-| G6PD | **Consensus law (deployed)** — random-order Bi-Bi, steady-state NADPH release | `run_g6pd()` |
-| G6PD | ATP-free — ATP dropped as a metabolite (ATP-bearing rows filtered out), for data measured without ATP | `run_g6pd_noatp()` |
-| G6PD | Ablation — drops the E·G6P·ATP dead-end | `fit_consensus_equation(…; variants=[:no_g6p_atp_deadend])` |
-| G6PD | Ablation — drops the E·G6P·NADPH dead-end | `fit_consensus_equation(…; variants=[:no_g6p_nadph_deadend])` |
-| G6PD | Ablation — drops both G6P dead-ends | `fit_consensus_equation(…; variants=[:no_g6p_both_deadends])` |
-| G6PD | Pure rapid-equilibrium form (conflation diagnostic; not deployable) | `fit_consensus_equation(…; variants=[:RE_rate_eq])` |
-| PGD | **Consensus law (deployed)** — Topham Bi-Ter, steady-state Ru5P release | `run_pgd()` |
-| PGD | Fully rapid-equilibrium (evaluation only) | `run_pgd_fullre()` |
+| G6PD | **Consensus law (deployed)** — random-order Bi-Bi, steady-state NADPH release | `run_g6pd()` or `fit_consensus_equation(:g6pd)` |
+| G6PD | ATP-free — ATP dropped as a metabolite (ATP-bearing rows filtered out), for data measured without ATP | `fit_consensus_equation(:g6pd; variants=[:no_atp])` |
+| G6PD | Ablation — drops the E·G6P·ATP dead-end | `fit_consensus_equation(:g6pd; variants=[:no_g6p_atp_deadend])` |
+| G6PD | Ablation — drops the E·G6P·NADPH dead-end | `fit_consensus_equation(:g6pd; variants=[:no_g6p_nadph_deadend])` |
+| G6PD | Ablation — drops both G6P dead-ends | `fit_consensus_equation(:g6pd; variants=[:no_g6p_both_deadends])` |
+| G6PD | Pure rapid-equilibrium form (conflation diagnostic; not deployable) | `fit_consensus_equation(:g6pd; variants=[:RE_rate_eq])` |
+| PGD | **Consensus law (deployed)** — Topham Bi-Ter, steady-state Ru5P release | `run_pgd()` or `fit_consensus_equation(:pgd)` |
+| PGD | Fully rapid-equilibrium (evaluation only) | `fit_consensus_equation(:pgd; variants=[:full_re])` |
 
-Every runner takes the same `smoke`, `nprocs`, and `outdir` keywords as in the
-[Quickstart](#4-quickstart). The three laws with a dedicated runner also have a
-[command-line](#8-command-line) subcommand (`g6pd`, `pgd`, `g6pd-noatp`); the
-ablation, diagnostic, and fully-rapid-equilibrium variants are Julia-only. The
-`:full_re` PGD variant has its own write-up in
-[§10](#10-an-alternative-pgd-rate-law-full_re); for the full technical detail on
-every variant — what each dead-end means and why the ablations exist — see
-[`AGENTS.md`](AGENTS.md).
+`variants` takes a Julia list `[...]`; each name is a Symbol (a leading colon, e.g.
+`:no_atp`). Selecting a variant automatically applies its data filter (e.g. the
+ATP-free variant drops the ATP-bearing rows) and names its output folder after it.
+
+Every call takes the same `smoke`, `nprocs`, and `outdir` keywords as in the
+[Quickstart](#4-quickstart), and any of these fits can be launched from the
+[command line](#8-command-line) with `--variant NAME`. The `:full_re` PGD variant
+has its own write-up in [§10](#10-an-alternative-pgd-rate-law-full_re); for the full
+technical detail on every variant — what each dead-end means and why the ablations
+exist — see [`AGENTS.md`](AGENTS.md).
 
 ## 6. Understanding the outputs
 
@@ -227,7 +225,6 @@ Everything after the `--` is passed to the tool. The subcommands are:
 |---|---|
 | `g6pd` | Fit G6PD |
 | `pgd` | Fit PGD |
-| `g6pd-noatp` | Fit the ATP-free G6PD variant |
 | `hk1` | Fit HK1 *(not yet available — see Troubleshooting)* |
 | `plot <run_dir>` | Render the fitted law over the data for a finished run |
 | `help` | Print usage |
@@ -239,7 +236,15 @@ And the flags:
 | `--smoke` | Use the fast, low-budget fit (same as `smoke=true`) |
 | `--nprocs N` | Use `N` worker processes for the fit |
 | `--outdir DIR` | Write the run's seven output files into `DIR` |
-| `--data CSV` | Fit your own CSV instead of the built-in corpus (only with `g6pd-noatp`) |
+| `--data CSV` | Fit your own CSV (canonical columns required) instead of the built-in corpus; valid with any enzyme subcommand |
+| `--variant NAME` | Fit an alternative rate law instead of the deployed one (e.g. `no_atp`, `full_re`, `no_g6p_atp_deadend`) |
+
+To fit the ATP-free G6PD variant, pass `g6pd --variant no_atp`; the older
+`g6pd-noatp` subcommand no longer exists. For example, at smoke budget:
+
+```sh
+julia --project -e 'using FitRateEquation; FitRateEquation.cli_main(ARGS)' -- g6pd --variant no_atp --smoke
+```
 
 For example, to fit PGD at full budget and put the results in a folder called
 `pgd_run`:
@@ -271,21 +276,22 @@ your terminal to check, and download a newer release from
 
 **`run_hk1()` throws an error:** this is expected — HK1 support is not yet
 available in this release (the underlying mechanism hasn't been ported over
-yet). `run_g6pd`, `run_pgd`, `run_g6pd_noatp`, and `run_pgd_fullre` are fully
+yet). `run_g6pd` and `run_pgd` (and their general form,
+`fit_consensus_equation(:g6pd | :pgd)`, including every variant) are fully
 available.
 
 ## 10. An alternative PGD rate law (`:full_re`)
 
 Alongside the default PGD fit, the package includes an alternative,
 experimental rate equation for PGD called `:full_re` (a "fully
-rapid-equilibrium" form). You run it the same way as any other fit:
+rapid-equilibrium" form). You run it by naming the variant:
 
 ```julia
 using FitRateEquation
-run_pgd_fullre()          # add smoke=true for a fast plumbing check
+fit_consensus_equation(:pgd; variants=[:full_re])   # add smoke=true for a fast plumbing check
 ```
 
-It writes the same six output files as `run_pgd`, into a folder labeled
+It writes the same seven output files as `run_pgd()`, into a folder labeled
 `PGD_fullre_...`. On the built-in data it generalizes to unseen papers
 noticeably better than the default PGD law and better captures how the product
 NADPH slows the enzyme down. It is an **evaluation variant only** — it is not
