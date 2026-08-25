@@ -376,6 +376,23 @@ function cha_absolute_logratio_loss(enzyme::Symbol, mech, d::Dataset, coords::Ab
     total / n
 end
 
+# Scale-aware scoring of a FITTED coords Dict (as returned by cha_fit_candidate). This is the
+# single source of truth for CV fold scoring in run.jl: absolute mode pops :kcat and scores
+# with the uncentered absolute loss at kf=kcat (fiber-free release rate); relative uses the
+# centered loss. Without this a CV fold in absolute mode would score fit.coords (which carries
+# :kcat) through the CENTERED loss, silently discarding the scale it exists to measure.
+function cha_score_loss(enzyme::Symbol, mech, d::Dataset, coords::AbstractDict;
+                        keq::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy,
+                        scale::Symbol=:relative)
+    if scale === :absolute
+        c = Dict(coords)
+        kcat = pop!(c, :kcat)
+        return cha_absolute_logratio_loss(enzyme, mech, d, c; keq=keq, kf=kcat,
+                                          release_rate=CHA_ABS_RELEASE_RATE, variant=variant)
+    end
+    cha_centered_logratio_loss(enzyme, mech, d, coords; keq=keq, variant=variant)
+end
+
 # Map a per-row concentration NamedTuple to the keyword args of the enzyme's Cha law,
 # pulling each metabolite by field name (absent field => 0.0, the law's "species absent").
 _cha_field(cc, s) = hasproperty(cc, s) ? getproperty(cc, s) : 0.0

@@ -611,7 +611,7 @@ Wires the new axis end-to-end and enforces the absolute-mode data requirement.
 - Consumes: `cha_fit_candidate(...; scale)`, `resolve_cha_pins(...; extra, scale)`, `d.Et`.
 - Produces: `fit_consensus_equation(enzyme; …, scale::Symbol=:relative, pins::Dict{Symbol,Float64}=Dict())`. `_fit_consensus(cfg; …, scale, pins)`. Absolute + non-G6PD errors; absolute with a corpus lacking finite `Et` errors naming `[G6PD] (nM)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `test/test_run_fit.jl`:
 ```julia
@@ -639,12 +639,12 @@ end
 ```
 (If the mini fixture is too small for the CV fold count, this test asserts only that the in-sample fit + outputs run; CV specifics are Task 7.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_run_fit.jl`
 Expected: FAIL — `fit_consensus_equation` has no `scale`/`pins`; no guard.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `fit_consensus_equation`, add `scale::Symbol=:relative` and `pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}()`; after `enz = _canonical_enzyme(...)` add the guard:
 ```julia
@@ -663,12 +663,12 @@ In `_fit_consensus`, add `scale` and `pins` kwargs. After building `d`, enforce 
 ```
 Thread `scale` and `pins` into the task machinery: `_build_tasks(...; scale)` and each `resolve_cha_pins(...; extra=pins, scale=scale)` call site (there are three: the tasks builder, the reduce path, and any inline single-fit path — grep `resolve_cha_pins` in `run.jl`), and pass `scale` into every `cha_fit_candidate` call inside `_run_fit_task`/`_reduce_cells`. Add `scale` to the `meta` NamedTuple and to the `write_outputs(...; scale=scale)` call (consumed in Task 9).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `julia --project test/test_run_fit.jl`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/run.jl test/test_run_fit.jl
