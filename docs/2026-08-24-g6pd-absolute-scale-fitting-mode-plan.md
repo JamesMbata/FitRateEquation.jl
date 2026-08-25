@@ -967,7 +967,7 @@ Proves the pipeline recovers a planted `kcat` and that the generating variant wi
 
 **Interfaces:** consumes the full absolute pipeline.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `test/test_absolute_discrimination.jl`:
 ```julia
@@ -1000,19 +1000,19 @@ end
 ```
 (If forward-only synthetic rows must exclude reverse, all `d0.concs` already have `PGLn=0` for the deployed G6PD corpus figures; if any figure carries `PGLn>0`, filter those rows out before planting.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_absolute_discrimination.jl`
 Expected: FAIL initially only if earlier tasks incomplete; otherwise it should pass once the pipeline is wired. (Written last, it is the integration gate.)
 
-- [ ] **Step 3: (No new implementation)** — this test exercises Tasks 1–8. If it fails, debug the wired path, not the test.
+- [x] **Step 3: (No new implementation)** — this test exercises Tasks 1–8. If it fails, debug the wired path, not the test.
 
-- [ ] **Step 4: Run to verify it passes; then the full suite**
+- [x] **Step 4: Run to verify it passes; then the full suite**
 
 Run: `julia --project test/test_absolute_discrimination.jl && julia --project -e 'using Pkg; Pkg.test()'`
 Expected: PASS, full suite green.
 
-- [ ] **Step 5: Add to runtests and commit**
+- [x] **Step 5: Add to runtests and commit**
 
 Add `include("test_absolute_discrimination.jl")` to `test/runtests.jl`.
 ```bash
