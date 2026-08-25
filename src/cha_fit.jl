@@ -272,37 +272,32 @@ end
 #   generalization that keeps that per-group-uniform property while letting keq vary ACROSS
 #   figures.
 # -----------------------------------------------------------------------------------------
-function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
-                                    coords::AbstractDict; keq::Union{Nothing,Real}=nothing,
-                                    kf::Real = 1.0, Et::Real = 1.0,
-                                    release_rate::Real = _default_release_rate(enzyme),
-                                    release_eq::Real = _default_release_eq(enzyme, coords),
-                                    kr::Union{Nothing,Real} = nothing,
-                                    variant::Symbol = :_deploy)
+# SHARED per-row core: the group loop, per-figure keq resolution, macro-tuple assembly,
+# cha_rate_* evaluation, and the sign/finite `_SIGN_PENALTY` bookkeeping — everything both the
+# centered (variance) and absolute (uncentered) aggregators need. Fills `logratio` (per-row
+# `log|pred| - log|obs|`, NaN on the sign/finite penalty branch) and returns
+# `(penalty, groups)`, where `groups` is the per-group row-index sets in `unique(d.group)`
+# order. This is THE arithmetic that must never drift between modes. It performs NO
+# mean-centering — each aggregator applies its own reduction over `logratio`/`groups`.
+function _cha_row_logratios!(logratio, enzyme::Symbol, mech, d::Dataset, coords::AbstractDict;
+                             keq::Union{Nothing,Real}=nothing, kf::Real = 1.0, Et::Real = 1.0,
+                             release_rate::Real = _default_release_rate(enzyme),
+                             release_eq::Real = _default_release_eq(enzyme, coords),
+                             kr::Union{Nothing,Real} = nothing, variant::Symbol = :_deploy)
     cha_rate_enz = enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
                    enzyme === :PGD  ? (variant === :full_re ? ChaLaws.cha_rate_PGD_fullRE :
                                                               ChaLaws.cha_rate_PGD) :
                    enzyme === :HK1  ? ChaLawsHK1.cha_rate_HK1 :
-                   error("cha_centered_logratio_loss: unknown enzyme $enzyme")
-    n = nrows(d)
-    logratio = fill(NaN, n)
+                   error("_cha_row_logratios!: unknown enzyme $enzyme")
     penalty = 0.0
-    groups = unique(d.group)
-    # Single pass per group: gather idx ONCE (was findall'd twice -- once here, once again in
-    # a second centering loop). Prediction and per-group centering are computed together, but
-    # each group's variance contribution is STASHED in group_variances rather than added to
-    # `total` inline, so the final fold order below is byte-identical to the old two-loop
-    # structure (`total = penalty` first, THEN group variances added in group order) -- adding
-    # inline here would interleave penalty and variance terms into `total` in a different order
-    # and risk perturbing the last bits (floating-point addition is not associative).
-    group_variances = Vector{Float64}(undef, length(groups))
-    for (gi, g) in enumerate(groups)
-        idx = findall(==(g), d.group)
+    # Per-group row-index sets in unique(d.group) order (matches the old findall-per-group loop).
+    groups = [findall(==(g), d.group) for g in unique(d.group)]
+    for idx in groups
         # keq for this figure: scalar override if given, else the figure's own (uniform) d.keq.
         keq_g = if keq === nothing
             ks = unique(d.keq[idx])
             length(ks) == 1 ||
-                error("cha_centered_logratio_loss: keq not uniform within figure $g: $ks")
+                error("_cha_row_logratios!: keq not uniform within figure $(d.group[idx[1]]): $ks")
             ks[1]
         else
             keq
@@ -320,17 +315,32 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
                 logratio[i] = log(abs(v)) - log(abs(o))
             end
         end
-        vals = filter(isfinite, logratio[idx])
-        if isempty(vals)
-            group_variances[gi] = 0.0
-        else
-            μ = sum(vals) / length(vals)
-            group_variances[gi] = sum(x -> (x - μ)^2, vals)
-        end
     end
+    (penalty, groups)
+end
+
+# Thin CENTERED aggregator: per-(Article,Fig) mean-centered variance of the shared core's
+# log-ratios. The fold order is byte-identical to the pre-refactor two-loop structure —
+# `total = penalty` first, THEN each group's variance added in `groups` order — because float
+# addition is not associative (locked bitwise by test_cha_fit.jl's fold-order test). An empty
+# group is skipped, exactly reproducing the old `+= 0.0` no-op for finite `total`.
+function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
+                                    coords::AbstractDict; keq::Union{Nothing,Real}=nothing,
+                                    kf::Real = 1.0, Et::Real = 1.0,
+                                    release_rate::Real = _default_release_rate(enzyme),
+                                    release_eq::Real = _default_release_eq(enzyme, coords),
+                                    kr::Union{Nothing,Real} = nothing,
+                                    variant::Symbol = :_deploy)
+    n = nrows(d)
+    logratio = fill(NaN, n)
+    penalty, groups = _cha_row_logratios!(logratio, enzyme, mech, d, coords; keq=keq, kf=kf,
+        Et=Et, release_rate=release_rate, release_eq=release_eq, kr=kr, variant=variant)
     total = penalty
-    for v in group_variances
-        total += v
+    for idx in groups
+        vals = filter(isfinite, logratio[idx])
+        isempty(vals) && continue
+        μ = sum(vals) / length(vals)
+        total += sum(x -> (x - μ)^2, vals)
     end
     total / n
 end

@@ -349,3 +349,35 @@ end
     @test pen_fr < 1e-12
     @test pen_dp > 1e-8
 end
+
+@testset "shared loss core: centered wrapper == direct core aggregation" begin
+    d = load_dataset(g6pd_config()); keq = median(d.keq)
+    m = FitRateEquation.v2_mechanism()
+    coords = Dict(s => getfield(cha_macro_readoffs_G6PD(m, -3 .+ 2 .* rand(length(free_params(m))); keq=keq), s)
+                  for s in cha_coords(:G6PD))
+    L = ChaFit.cha_centered_logratio_loss(:G6PD, m, d, coords; keq=keq)
+    lr = fill(NaN, FitRateEquation.nrows(d))
+    pen, groups = ChaFit._cha_row_logratios!(lr, :G6PD, m, d, coords; keq=keq)
+    total = pen
+    for idx in groups
+        vals = filter(isfinite, lr[idx])
+        isempty(vals) && continue
+        μ = sum(vals)/length(vals)
+        total += sum(x -> (x-μ)^2, vals)
+    end
+    @test L ≈ total / FitRateEquation.nrows(d)
+end
+
+@testset "centered loss: bitwise fold-order lock (relative invariance)" begin
+    # Reference values captured from the PRE-refactor cha_centered_logratio_loss at a
+    # deterministic coords point on the bundled corpus. The shared-core refactor must
+    # reproduce them to the last bit (float addition is non-associative — this is the real
+    # fold-order guard; test_byte_identity.jl only checks structure, not values).
+    d = load_dataset(g6pd_config())
+    m = FitRateEquation.v2_mechanism()
+    logθ = collect(range(-3.0, 1.0; length=length(free_params(m))))
+    mac = cha_macro_readoffs_G6PD(m, logθ; keq=13.655)
+    coords = Dict(s => getfield(mac, s) for s in cha_coords(:G6PD))
+    @test ChaFit.cha_centered_logratio_loss(:G6PD, m, d, coords) == 0.4788384934247699
+    @test ChaFit.cha_centered_logratio_loss(:G6PD, m, d, coords; keq=13.655) == 0.47885726568219367
+end

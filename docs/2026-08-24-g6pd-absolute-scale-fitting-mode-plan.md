@@ -169,7 +169,7 @@ Extracts the per-row arithmetic so centered and (Task 3) absolute aggregators sh
 **Interfaces:**
 - Produces: `ChaFit._cha_row_logratios!(logratio, enzyme, mech, d, coords; keq, kf, Et, release_rate, release_eq, kr, variant) -> (penalty::Float64, groups::Vector{Vector{Int}})` fills `logratio` (per-row `log(pred)-log(obs)`, `NaN` on sign/finite penalty) and returns accumulated penalty + per-group row-index sets. `cha_centered_logratio_loss` keeps its exact signature and output.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `test/test_cha_fit.jl`:
 ```julia
@@ -193,12 +193,12 @@ Append to `test/test_cha_fit.jl`:
 end
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_cha_fit.jl`
 Expected: FAIL — `_cha_row_logratios!` undefined.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/cha_fit.jl`, extract the group/keq/rate loop from `cha_centered_logratio_loss` into `_cha_row_logratios!` (preserving the group iteration order and the `_SIGN_PENALTY`/finite handling exactly). The core does NOT do mean-centering — it only fills `logratio` and returns `(penalty, groups)`. Then rewrite `cha_centered_logratio_loss` to call the core and aggregate per-group variance in the SAME fold order as today (accumulate `penalty` first, then add group variances in `groups` order — preserving float associativity):
 ```julia
@@ -253,12 +253,12 @@ end
 ```
 Note: the original stashed group variances to preserve `penalty`-first ordering; the rewrite adds `penalty` first then the group variances in `groups` order — same order. If `test_byte_identity.jl` shows any last-bit drift, restore the original two-phase `group_variances` stash inside the wrapper.
 
-- [ ] **Step 4: Run tests to verify they pass (incl. bit-identity)**
+- [x] **Step 4: Run tests to verify they pass (incl. bit-identity)**
 
 Run: `julia --project test/test_cha_fit.jl && julia --project test/test_byte_identity.jl`
 Expected: PASS both. `test_byte_identity.jl` confirms relative output unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cha_fit.jl test/test_cha_fit.jl
