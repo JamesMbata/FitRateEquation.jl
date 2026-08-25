@@ -921,7 +921,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Interfaces:** none (docs).
 
-- [ ] **Step 1: Write/adjust the doc check**
+- [x] **Step 1: Write/adjust the doc check**
 
 If `test/test_docs.jl` asserts README sections, add an assertion that a `## Absolute-scale fitting` section and a `pins` mention exist:
 ```julia
@@ -933,21 +933,21 @@ If `test/test_docs.jl` asserts README sections, add an assertion that a `## Abso
 end
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `julia --project test/test_docs.jl`
 Expected: FAIL — section absent.
 
-- [ ] **Step 3: Write the README section**
+- [x] **Step 3: Write the README section**
 
 Add a `## Absolute-scale fitting (G6PD)` section covering: what absolute mode does and when to use it; the `[G6PD] (nM)` column requirement and units; the `scale=:absolute` keyword; the explicit `pins` override with the escalation ladder (rungs 1–4 at `mode1`, values from a prior relative fit); and the `kcat` band verdict. Include the four-rung code example from the spec.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `julia --project test/test_docs.jl`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md test/test_docs.jl

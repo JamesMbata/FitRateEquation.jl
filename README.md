@@ -299,7 +299,76 @@ wired into the downstream simulation model. The full write-up of what it does
 and how it compares is in
 [`docs/pgd_fullre_evaluation.md`](docs/pgd_fullre_evaluation.md).
 
-## 11. Going deeper
+## 11. Absolute-scale fitting (G6PD)
+
+The default fit is **relative**: each source figure floats its own overall rate
+scale (a per-figure mean is divided out), so the fit is driven by the *shape* of
+each curve, not its absolute height. That is the right choice for a corpus pooled
+from many papers with different enzyme amounts and assay calibrations — but it
+also means structurally different rate laws can fit equally well, because the one
+thing the corpus does not constrain is the absolute magnitude.
+
+**Absolute-scale mode** (`scale=:absolute`, G6PD only) removes that per-figure
+freedom. It uses an *uncentered* loss, so the relative magnitudes *between*
+conditions become discriminating signal — which helps tell the candidate dead-end
+laws apart — and it makes the enzyme turnover **`kcat`** a fitted quantity
+(reported in s⁻¹). Use it on a **single-scale, forward-only** dataset (one
+purification, no product/reverse rows), not on the mixed literature corpus.
+
+**Required column.** Absolute mode needs each row's enzyme concentration, read
+from a **`[G6PD] (nM)`** column (nanomolar; converted to Molar on import). It
+enters the prediction as a linear prefactor (`rate = [G6PD] · kcat · f`). A run
+without a finite `[G6PD] (nM)` column is rejected with an error naming the column.
+Every other column is the same canonical schema as [§5](#5-run-on-your-own-data).
+
+**Pinning the reverse constants (`pins`).** A forward-only dataset cannot
+determine the reverse/degenerate constants, so you pin them explicitly with the
+`pins` keyword — a `Dict` of coordinate ⇒ **log10** value. Pin them to the
+data-determined values from a prior *relative* fit on the mixed corpus (which does
+see the literature reverse rows). Each key is checked against the law's
+coordinates, so a typo errors rather than silently doing nothing.
+
+Run the fit as a manual **escalation ladder** at `mode1` (forward inhibition
+constants left free, so the `pins` you pass are the only clamps and each rung is
+honest):
+
+```julia
+using FitRateEquation
+
+# Ladder — add one pin per rung; values are log10(M) from a prior relative fit.
+# rung 1: nothing pinned
+fit_consensus_equation(:g6pd; scale=:absolute, anchor_reverse=false,
+    data_csv="my_single_scale_forward.csv")
+
+# rung 2: + 6PGL binding (K_PGLn)
+fit_consensus_equation(:g6pd; scale=:absolute, anchor_reverse=false,
+    data_csv="my_single_scale_forward.csv",
+    pins=Dict(:Kd_6PGLn => log10(2.1e-4)))
+
+# rung 3: + reverse NADPH constant
+fit_consensus_equation(:g6pd; scale=:absolute, anchor_reverse=false,
+    data_csv="my_single_scale_forward.csv",
+    pins=Dict(:Kd_6PGLn => log10(2.1e-4), :Km_NADPH_rev => log10(3.9e-6)))
+
+# rung 4: + forward dead-end Ki_NADPH
+fit_consensus_equation(:g6pd; scale=:absolute, anchor_reverse=false,
+    data_csv="my_single_scale_forward.csv",
+    pins=Dict(:Kd_6PGLn => log10(2.1e-4), :Km_NADPH_rev => log10(3.9e-6),
+              :Ki_NADPH => log10(1.5e-5)))
+```
+
+(There is no separate `Ki_6PGLn` — 6-phosphogluconolactone release is
+rapid-equilibrium, so its dissociation constant `Kd_6PGLn` *is* its
+product-inhibition constant. `Km_NADPH_rev` is the reverse NADPH constant.)
+
+**Reading the result.** `report.md` records `scale = absolute`, the fitted
+`kcat`, and a verdict against the **150–250 s⁻¹** literature band (`in-band` vs
+`OUT OF BAND`) — a check, never a clamp, so a fit outside the band is stated, not
+hidden. `macro_constants.csv` carries a classified `kcat` row, and the plotter
+draws absolute predicted-vs-measured rates. The `--scale absolute` flag runs the
+same fit from the [command line](#8-command-line).
+
+## 12. Going deeper
 
 This README covers everyday use. For the full model details — the exact rate
 equation being fit, what's held fixed versus what's fit from data, the
