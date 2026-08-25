@@ -160,3 +160,17 @@ end
     a = FitRateEquation.build_cha_adapter(:G6PD, Dict{Symbol,Float64}(), :SS_NADPH_release_rate_eq, 13.7)
     @test collect(EnzymeRates.metabolites(a)) == mets
 end
+
+@testset "absolute outputs record scale + kcat verdict" begin
+    out = mktempdir()
+    fit_consensus_equation(:g6pd; scale=:absolute, smoke=true, outdir=out,
+        data_csv=joinpath(@__DIR__, "fixtures", "g6pd_abs_mini.csv"),
+        pins=Dict(:Kd_6PGLn=>log10(2.1e-4), :Km_NADPH_rev=>log10(3.9e-6)))
+    prov = read(joinpath(out, "provenance.toml"), String)
+    # Assert the actual TOML field, not a path substring (the branch dir name contains both
+    # "scale" and "absolute", which would make a loose occursin pass spuriously).
+    @test occursin(r"scale\s*=\s*\"absolute\"", prov)
+    report = read(joinpath(out, "report.md"), String)
+    # The kcat VERDICT line (not just the always-present kcatKm_G6P derived row).
+    @test occursin(r"kcat.*s⁻¹", report) || occursin("in-band", report) || occursin("OUT OF BAND", report)
+end

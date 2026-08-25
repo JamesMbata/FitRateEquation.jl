@@ -426,6 +426,10 @@ function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=noth
             println(io, "anchor_reverse  = $(meta.anchor_reverse)")
         hasproperty(meta, :variants) &&
             println(io, "variants        = $(collect(String.(meta.variants)))")
+        # Records the fit scale so an absolute-mode run dir is self-describing (the plotter
+        # reads this back to choose absolute predicted-vs-measured rendering).
+        hasproperty(meta, :scale) &&
+            println(io, "scale           = \"$(meta.scale)\"")
         println(io, "smoke           = $(meta.maxiter <= 150)")
     end
 end
@@ -476,6 +480,11 @@ end
 # so a view-returning `row_filter` must reach both or neither. Keyword annotations ASSERT, they
 # do not `convert`, so narrowing this back to `DataFrame` would let a view pass the fit and then
 # TypeError here, after the whole run.
+# Report verdict for the absolute-mode turnover: the SA-derived ~178 s⁻¹ sits in a 150–250 s⁻¹
+# literature band. This is a validation CHECK, never a clamp — a fit outside the band is stated.
+_kcat_verdict(kcat::Real) = (150.0 <= kcat <= 250.0) ? "in-band (150–250 s⁻¹)" :
+                                                       "OUT OF BAND (expected 150–250 s⁻¹)"
+
 function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G6PD",
                        enzyme::Symbol=:G6PD, deploy_keq::Real=median(d.keq),
                        anchor_reverse::Bool=true,
@@ -578,7 +587,8 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
                             "count, just an undetermined value). This variant's `micro_parameters.jl` ",
                             "block is **not deployable**. Compare fit quality only.\n")
             end
-            println(io, "CV (leave-one-article-out): $(res.r.cv.mean_cv) ± $(res.r.cv.se)\n")
+            cvlabel = scale === :absolute ? "leave-one-group-out (by Fig)" : "leave-one-article-out"
+            println(io, "CV ($cvlabel): $(res.r.cv.mean_cv) ± $(res.r.cv.se)\n")
             println(io, "| macro | value | class | ci |\n|---|---|---|---|")
             for m in res.classed
                 println(io, "| $(m.name) | $(m.value) | $(m.class) | $(m.ci) |")
@@ -588,6 +598,14 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
             end
             for m in _hk1_h4_derived_rows(enzyme, res.variant, res.r.fit.coords)
                 println(io, "| $(m.name) | $(m.value) | $(m.class) | $(m.ci) |")
+            end
+            # Absolute-mode turnover verdict: the fitted kcat against the 150–250 s⁻¹ band. A
+            # report-time CHECK, never a clamp — an out-of-band fit is stated, not hidden.
+            if scale === :absolute
+                kj = findfirst(c -> c.name === :kcat, res.classed)
+                kj === nothing || println(io, "\n**kcat** = ",
+                    round(res.classed[kj].value; sigdigits=4), " s⁻¹ — ",
+                    _kcat_verdict(res.classed[kj].value), " (`", res.classed[kj].class, "`)\n")
             end
             println(io)
         end

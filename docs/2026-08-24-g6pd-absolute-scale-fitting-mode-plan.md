@@ -821,7 +821,7 @@ Surfaces the new axis in the artifacts and plots absolute rates.
 - Consumes: `meta.scale`, absolute-mode `coords[:kcat]`.
 - Produces: `report.md` records `scale`, fitted `kcat`, and a `150–250 s⁻¹` in-band verdict; `provenance.toml` records `scale`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `test/test_outputs.jl`:
 ```julia
@@ -837,23 +837,23 @@ Append to `test/test_outputs.jl`:
 end
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_outputs.jl`
 Expected: FAIL — provenance/report lack `scale`/`kcat`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 - Thread `scale` into `write_outputs` and add a `scale = "..."` line to the provenance TOML writer.
 - In the report writer, when `meta.scale === :absolute`, add a line with the fitted `kcat` and a verdict: `in-band (150–250 s⁻¹)` vs `OUT OF BAND`.
 - In `ext/FitRateEquationMakieExt.jl`, when the run is absolute, plot predicted-vs-measured without per-figure recentering (multiply prediction by row `Et`). Follow the existing per-figure plotting entry (`plot_consensus_fit`), branching on the run's recorded scale.
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 Run: `julia --project test/test_outputs.jl && julia --project test/test_plot_render.jl`
 Expected: PASS both.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/run.jl ext/FitRateEquationMakieExt.jl test/test_outputs.jl
