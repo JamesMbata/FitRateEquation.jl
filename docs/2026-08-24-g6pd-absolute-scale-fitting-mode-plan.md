@@ -695,7 +695,7 @@ Adds a single-article CV fold helper and selects it when `scale=:absolute`.
 **Interfaces:**
 - Produces: `_group_folds(d::Dataset) -> Vector{NamedTuple{(:train,:test)}}` — one held-out fold per unique `d.group`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `test/test_cv.jl`:
 ```julia
@@ -713,12 +713,12 @@ end
 ```
 (The mini fixture is a single group `Mbata2026|1a`, so `folds` has length 1 with an empty complement — assert length and partition still hold; a multi-group fixture can be added if richer coverage is wanted.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_cv.jl`
 Expected: FAIL — `_group_folds` undefined.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/cv.jl`, mirror `_article_folds` but fold on `d.group`:
 ```julia
@@ -731,12 +731,12 @@ end
 ```
 In `run.jl`, where LOO-article folds are chosen (`_cha_loocv` / `_article_folds` call site), select `_group_folds(d)` when `scale === :absolute`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `julia --project test/test_cv.jl`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cv.jl src/run.jl test/test_cv.jl

@@ -112,7 +112,8 @@ function _cha_loocv(enzyme::Symbol, mech, d::Dataset; n_restarts::Int,
                     pins::Dict{Symbol,Float64}, anchors, variant::Symbol=:_deploy,
                     scale::Symbol=:relative)
     per = NamedTuple[]
-    folds = _article_folds(d)          # Task 7 switches to _group_folds for scale=:absolute
+    folds0 = scale === :absolute ? _group_folds(d) : _article_folds(d)
+    folds  = [f for f in folds0 if !isempty(f.train) && !isempty(f.test)]
     for fold in folds
         dtr = _subset(d, fold.train); dte = _subset(d, fold.test)
         fit = ChaFit.cha_fit_candidate(enzyme, mech, dtr; n_restarts=n_restarts, maxiter=maxiter,
@@ -192,7 +193,12 @@ end
 # dispatch order.
 function _build_tasks(cells, d::Dataset; seed::Int=1, enzyme::Symbol=:G6PD, anchor_reverse::Bool=true,
                       scale::Symbol=:relative, extra_pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
-    folds = _article_folds(d)          # Task 7 switches to _group_folds for scale=:absolute
+    # Absolute mode folds by Fig group (single-article corpus makes leave-one-article-out
+    # degenerate); drop any degenerate fold (empty train/test) so no fit runs on empty data.
+    # Relative mode uses _article_folds, which already excludes degenerate folds — the filter is
+    # a no-op there, so the task list is byte-identical.
+    folds0 = scale === :absolute ? _group_folds(d) : _article_folds(d)
+    folds  = [f for f in folds0 if !isempty(f.train) && !isempty(f.test)]
     allrows = collect(1:nrows(d))
     tasks = NamedTuple[]
     for (ci, (variant, mech, mode)) in enumerate(cells)

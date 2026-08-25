@@ -15,3 +15,15 @@ using Test
         @test isempty(intersect(train_arts, test_arts))
     end
 end
+
+@testset "_group_folds: one fold per unique group, train/test partition" begin
+    cfg = FitRateEquation.g6pd_config(
+        data_csv=joinpath(@__DIR__, "fixtures", "g6pd_abs_mini.csv"))
+    d = FitRateEquation.load_dataset(cfg)
+    folds = FitRateEquation._group_folds(d)
+    @test length(folds) == length(unique(d.group))
+    for f in folds
+        @test sort(vcat(f.train, f.test)) == collect(1:FitRateEquation.nrows(d))
+        @test isempty(intersect(f.train, f.test))
+    end
+end
