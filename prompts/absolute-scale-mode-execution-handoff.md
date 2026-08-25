@@ -1,15 +1,15 @@
-# Handoff: Execute the G6PD absolute-scale fitting mode (subagent-driven)
+# Handoff: Execute the G6PD absolute-scale fitting mode (inline execution)
 
 ## Your task
 
 Implement the **G6PD absolute-scale fitting mode** for `FitRateEquation.jl` by
-executing an existing, approved implementation plan **task-by-task using the
-`superpowers:subagent-driven-development` skill**. The design and plan are
-already written, reviewed, and committed — you are in the *execution* phase, not
-design.
+executing an existing, approved implementation plan **task-by-task, inline in
+this session, using the `superpowers:executing-plans` skill** (batch execution
+with review checkpoints — no subagents). The design and plan are already written,
+reviewed, and committed — you are in the *execution* phase, not design.
 
-**Invoke `superpowers:subagent-driven-development` first**, then work the plan's
-12 tasks in order.
+**Invoke `superpowers:executing-plans` first**, then work the plan's 12 tasks in
+order in this session.
 
 ## Where everything is
 
@@ -66,36 +66,44 @@ this mode is being built in preparation for that data.
 - **Guards:** `scale=:absolute` errors for any enzyme ≠ `:G6PD`; and errors if the
   corpus lacks a finite `[G6PD] (nM)` column.
 
-## CRITICAL execution constraints for THIS repo (read before spawning subagents)
+## Execution constraints for THIS repo (read before starting)
 
-1. **Heavy-Julia-run discipline (this is the big one).** Long Julia runs launched
-   from a **background subagent get SIGTERM'd when the subagent yields**, and
-   concurrent `julia` processes deadlock on the precompile lock. Therefore:
-   - Run subagents' Julia test steps **FOREGROUND / blocking** within the
-     subagent's own turn — **never** `run_in_background` inside a subagent.
-   - Run tasks **sequentially**, never two Julia processes at once.
-   - The final full-suite run (`Pkg.test()`, can take many minutes) is best done
-     by **you, the orchestrator, in the main session** (harness
-     `run_in_background` completes + notifies reliably from the main session).
-   - Keep per-task test runs small: run the single new/changed test **file**
-     (`julia --project test/test_xxx.jl`) during the task, not the whole suite.
-2. **Worktree Julia env.** Manifest.toml is gitignored, so the worktree needs
+1. **All Julia runs stay in this (main) session — that's the point of inline
+   execution.** Do NOT offload Julia to subagents (background subagents get
+   SIGTERM'd on yield). Run tasks **sequentially**; never launch two `julia`
+   processes at once (they deadlock on the precompile lock).
+2. **Per-task vs full-suite runs.** During a task, run only the single new/changed
+   test file — `julia --project test/test_xxx.jl` — for a fast loop. For the final
+   full-suite gate (`julia --project -e 'using Pkg; Pkg.test()'`, can take many
+   minutes) use the harness `run_in_background` and wait for the completion
+   notification (it completes + notifies reliably from the main session — verified
+   for ~24-min runs). Do not hand long runs off for manual checking.
+3. **Worktree Julia env.** Manifest.toml is gitignored, so the worktree needs
    `Pkg.instantiate()` first (Task 0). EnzymeRates resolves from a `[sources]`
    git URL; if that fails offline, copy the main checkout's
    `/home/james/projects/FitRateEquation.jl/Manifest.toml` into the worktree and
    re-instantiate. **Baseline must be green before Task 1** (it was deferred at
    plan-writing time).
-3. **Bit-identity lock.** After every task that touches `src/cha_fit.jl` or
+4. **Bit-identity lock.** After every task that touches `src/cha_fit.jl` or
    `src/run.jl`, run `test/test_byte_identity.jl` — relative-mode output must not
    drift. If it drifts, the refactor changed float fold order; fix before moving on.
-4. **Highest-uncertainty task: Task 6.** Threading `scale`/`pins` through the
+5. **Highest-uncertainty task: Task 6.** Threading `scale`/`pins` through the
    `_build_tasks` / `_run_fit_task` / `_reduce_cells` machinery in `run.jl` was
-   only partially mapped when the plan was written. Have the subagent **grep all
-   `resolve_cha_pins` and `cha_fit_candidate` call sites in `run.jl`** and thread
-   through each; review that task's diff carefully.
-5. **Two plan spots say "match the actual shape in the file"** (not placeholders):
+   only partially mapped when the plan was written. **Grep all `resolve_cha_pins`
+   and `cha_fit_candidate` call sites in `run.jl`** and thread through each; check
+   that diff carefully.
+6. **Two plan spots say "match the actual shape in the file"** (not placeholders):
    `classify_cha`'s exact signature (Task 8) and the CLI arg-parser name (Task 10).
-   The subagent should read the current code and match it.
+   Read the current code and match it.
+
+## Inline-execution rhythm (from executing-plans)
+
+Work in batches with checkpoints. For each task: write the failing test → run it
+(foreground) and confirm it fails → implement → run it and confirm it passes →
+run `test/test_byte_identity.jl` if `cha_fit.jl`/`run.jl` changed → commit.
+Pause at natural checkpoints (e.g. after Tasks 1–3 loss/Et core, after Task 6
+wiring, after Task 8 deploy) to let the user review before continuing. Keep the
+plan's checkboxes updated as you go.
 
 ## Repo conventions (from CLAUDE.md)
 
@@ -113,13 +121,10 @@ this mode is being built in preparation for that data.
 
 1. `cd /home/james/projects/FitRateEquation.jl/.worktrees/absolute-scale-mode`
 2. Read the plan and spec.
-3. Invoke `superpowers:subagent-driven-development`.
-4. Do **Task 0** (instantiate + green baseline) yourself in the main session
-   before dispatching any implementation subagent.
-5. Then execute Tasks 1–12 in order, each: failing test → run (foreground) →
-   implement → run → bit-identity check (if applicable) → commit. Review each
-   subagent's diff before the next task.
-6. When all 12 pass, run the full suite from the main session and report.
+3. Invoke `superpowers:executing-plans`.
+4. Do **Task 0** (instantiate + green baseline) before any implementation.
+5. Execute Tasks 1–12 in order with the rhythm above, pausing at checkpoints.
+6. When all 12 pass, run the full suite (background) from this session and report.
 
 ## Definition of done
 
