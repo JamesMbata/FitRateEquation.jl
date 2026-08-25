@@ -39,9 +39,9 @@
 module ChaFit
 
 export cha_coords, cha_macro_tuple, cha_haldane_kr, CHA_KDRU_DEFAULT
-export cha_centered_logratio_loss
+export cha_centered_logratio_loss, cha_absolute_logratio_loss
 export cha_fit_candidate, cha_coord_bounds
-export cha_apparent_km, cha_specificity, CHA_DEPLOY_RELEASE_RATE
+export cha_apparent_km, cha_specificity, CHA_DEPLOY_RELEASE_RATE, CHA_ABS_RELEASE_RATE
 export resolve_cha_pins
 
 # Parent-relative imports so ChaFit composes BOTH as a Main-level module (tests, where the
@@ -78,9 +78,12 @@ _hk1_variant_alpha(variant::Symbol) =
 #   (kf, Et), the swept fiber (release_rate = koffQ / koff and its on-rate konQ / kon), and
 #   the Haldane-determined reverse catalysis kr.
 # -----------------------------------------------------------------------------------------
-function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy)
-    if enzyme === :G6PD
-        return variant === :no_atp ?
+# `scale=:absolute` appends the turnover coord `:kcat` for G6PD (the single source of truth
+# for the parameter vector — bounds, the CMA-ES vector, pins, and _assert_pin_is_coord all key
+# off this). For every relative-mode caller (the default) the returned coord set is unchanged.
+function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy; scale::Symbol=:relative)
+    base = if enzyme === :G6PD
+        variant === :no_atp ?
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Km_NADPH_rev] :
         variant === :no_g6p_nadph_deadend ?
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_ATP, :Ki_ATP_EG, :Km_NADPH_rev] :
@@ -91,7 +94,7 @@ function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy)
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EG,
              :Km_NADPH_rev]
     elseif enzyme === :PGD
-        return variant === :full_re ?
+        variant === :full_re ?
             # Fully-RE (fiber-free): NO promoted-release fiber DOF, NO separate forward Ki_NADPH.
             # Kd_NADPH is the single competitive NADPH constant (Km_NADPH_rev ≡ Kd_NADPH); Kd_Ru5P
             # is a real RE coord. Effector coords (:Ki_ATP/:Ki_ATP_EN/:Ki_NADPH) are appended by
@@ -106,12 +109,13 @@ function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy)
         # identified split). The back-map (cha_macro_tuple, variant=:H4) reconstructs Kc,Kn.
         # H1/H3 keep the raw {Ki_G6P_C, Ki_G6P_N} coords.
         # See notes/2026-06-13_hk1_g6p_ridge_resolution_report.md.
-        return variant === :H4 ?
+        variant === :H4 ?
             [:Kd_Glc, :Kd_ATP, :Keff, :Ki_ADP, :split_ratio, :K_Pi_N] :
             [:Kd_Glc, :Kd_ATP, :Ki_G6P_C, :Ki_ADP, :Ki_G6P_N, :K_Pi_N]
     else
         error("cha_coords: unknown enzyme $enzyme (expected :G6PD, :PGD, or :HK1)")
     end
+    (enzyme === :G6PD && scale === :absolute) ? vcat(base, :kcat) : base
 end
 
 # -----------------------------------------------------------------------------------------
@@ -272,37 +276,32 @@ end
 #   generalization that keeps that per-group-uniform property while letting keq vary ACROSS
 #   figures.
 # -----------------------------------------------------------------------------------------
-function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
-                                    coords::AbstractDict; keq::Union{Nothing,Real}=nothing,
-                                    kf::Real = 1.0, Et::Real = 1.0,
-                                    release_rate::Real = _default_release_rate(enzyme),
-                                    release_eq::Real = _default_release_eq(enzyme, coords),
-                                    kr::Union{Nothing,Real} = nothing,
-                                    variant::Symbol = :_deploy)
+# SHARED per-row core: the group loop, per-figure keq resolution, macro-tuple assembly,
+# cha_rate_* evaluation, and the sign/finite `_SIGN_PENALTY` bookkeeping — everything both the
+# centered (variance) and absolute (uncentered) aggregators need. Fills `logratio` (per-row
+# `log|pred| - log|obs|`, NaN on the sign/finite penalty branch) and returns
+# `(penalty, groups)`, where `groups` is the per-group row-index sets in `unique(d.group)`
+# order. This is THE arithmetic that must never drift between modes. It performs NO
+# mean-centering — each aggregator applies its own reduction over `logratio`/`groups`.
+function _cha_row_logratios!(logratio, enzyme::Symbol, mech, d::Dataset, coords::AbstractDict;
+                             keq::Union{Nothing,Real}=nothing, kf::Real = 1.0, Et::Real = 1.0,
+                             release_rate::Real = _default_release_rate(enzyme),
+                             release_eq::Real = _default_release_eq(enzyme, coords),
+                             kr::Union{Nothing,Real} = nothing, variant::Symbol = :_deploy)
     cha_rate_enz = enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
                    enzyme === :PGD  ? (variant === :full_re ? ChaLaws.cha_rate_PGD_fullRE :
                                                               ChaLaws.cha_rate_PGD) :
                    enzyme === :HK1  ? ChaLawsHK1.cha_rate_HK1 :
-                   error("cha_centered_logratio_loss: unknown enzyme $enzyme")
-    n = nrows(d)
-    logratio = fill(NaN, n)
+                   error("_cha_row_logratios!: unknown enzyme $enzyme")
     penalty = 0.0
-    groups = unique(d.group)
-    # Single pass per group: gather idx ONCE (was findall'd twice -- once here, once again in
-    # a second centering loop). Prediction and per-group centering are computed together, but
-    # each group's variance contribution is STASHED in group_variances rather than added to
-    # `total` inline, so the final fold order below is byte-identical to the old two-loop
-    # structure (`total = penalty` first, THEN group variances added in group order) -- adding
-    # inline here would interleave penalty and variance terms into `total` in a different order
-    # and risk perturbing the last bits (floating-point addition is not associative).
-    group_variances = Vector{Float64}(undef, length(groups))
-    for (gi, g) in enumerate(groups)
-        idx = findall(==(g), d.group)
+    # Per-group row-index sets in unique(d.group) order (matches the old findall-per-group loop).
+    groups = [findall(==(g), d.group) for g in unique(d.group)]
+    for idx in groups
         # keq for this figure: scalar override if given, else the figure's own (uniform) d.keq.
         keq_g = if keq === nothing
             ks = unique(d.keq[idx])
             length(ks) == 1 ||
-                error("cha_centered_logratio_loss: keq not uniform within figure $g: $ks")
+                error("_cha_row_logratios!: keq not uniform within figure $(d.group[idx[1]]): $ks")
             ks[1]
         else
             keq
@@ -311,7 +310,13 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
                             release_rate=release_rate, release_eq=release_eq, kr=kr,
                             variant=variant)
         for i in idx
-            v = cha_rate_enz(m; _cha_row_kwargs(enzyme, d.concs[i])...)
+            vunit = cha_rate_enz(m; _cha_row_kwargs(enzyme, d.concs[i])...)
+            # Per-row enzyme concentration is a LINEAR prefactor (v = Et·kcat·f): the macro
+            # tuple stays at the unit gauge (scalar Et kwarg, default 1.0) and d.Et[i] scales
+            # the prediction. NaN (relative mode / no [G6PD] column) => 1.0, a strict no-op —
+            # so the centered path is byte-identical (locked by test_cha_fit.jl fold-order test).
+            eti = isnan(d.Et[i]) ? 1.0 : d.Et[i]
+            v = eti * vunit
             o = d.rate[i]
             if !isfinite(v) || v == 0 || sign(v) != sign(o)
                 penalty += _SIGN_PENALTY
@@ -320,19 +325,72 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
                 logratio[i] = log(abs(v)) - log(abs(o))
             end
         end
-        vals = filter(isfinite, logratio[idx])
-        if isempty(vals)
-            group_variances[gi] = 0.0
-        else
-            μ = sum(vals) / length(vals)
-            group_variances[gi] = sum(x -> (x - μ)^2, vals)
-        end
     end
+    (penalty, groups)
+end
+
+# Thin CENTERED aggregator: per-(Article,Fig) mean-centered variance of the shared core's
+# log-ratios. The fold order is byte-identical to the pre-refactor two-loop structure —
+# `total = penalty` first, THEN each group's variance added in `groups` order — because float
+# addition is not associative (locked bitwise by test_cha_fit.jl's fold-order test). An empty
+# group is skipped, exactly reproducing the old `+= 0.0` no-op for finite `total`.
+function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
+                                    coords::AbstractDict; keq::Union{Nothing,Real}=nothing,
+                                    kf::Real = 1.0, Et::Real = 1.0,
+                                    release_rate::Real = _default_release_rate(enzyme),
+                                    release_eq::Real = _default_release_eq(enzyme, coords),
+                                    kr::Union{Nothing,Real} = nothing,
+                                    variant::Symbol = :_deploy)
+    n = nrows(d)
+    logratio = fill(NaN, n)
+    penalty, groups = _cha_row_logratios!(logratio, enzyme, mech, d, coords; keq=keq, kf=kf,
+        Et=Et, release_rate=release_rate, release_eq=release_eq, kr=kr, variant=variant)
     total = penalty
-    for v in group_variances
-        total += v
+    for idx in groups
+        vals = filter(isfinite, logratio[idx])
+        isempty(vals) && continue
+        μ = sum(vals) / length(vals)
+        total += sum(x -> (x - μ)^2, vals)
     end
     total / n
+end
+
+# Thin ABSOLUTE aggregator: UNCENTERED sum-of-squares of the shared core's log-ratios. Unlike
+# the centered loss it does NOT subtract a per-group mean, so between-condition absolute rate
+# magnitudes become discriminating signal (§2 of the design). Per-row `d.Et` enters the core as
+# a linear prefactor and the caller supplies `kf = kcat` at `release_rate = CHA_ABS_RELEASE_RATE`
+# (fiber-free C = 1). The scalar `Et` gauge stays 1.0 — the per-row scale lives in `d.Et`.
+function cha_absolute_logratio_loss(enzyme::Symbol, mech, d::Dataset, coords::AbstractDict;
+        keq::Union{Nothing,Real}=nothing, kf::Real=1.0,
+        release_rate::Real = CHA_ABS_RELEASE_RATE,
+        release_eq::Real = _default_release_eq(enzyme, coords),
+        kr::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy)
+    n = nrows(d)
+    logratio = fill(NaN, n)
+    penalty, _ = _cha_row_logratios!(logratio, enzyme, mech, d, coords; keq=keq, kf=kf,
+        Et=1.0, release_rate=release_rate, release_eq=release_eq, kr=kr, variant=variant)
+    total = penalty
+    for x in logratio
+        isfinite(x) && (total += x * x)
+    end
+    total / n
+end
+
+# Scale-aware scoring of a FITTED coords Dict (as returned by cha_fit_candidate). This is the
+# single source of truth for CV fold scoring in run.jl: absolute mode pops :kcat and scores
+# with the uncentered absolute loss at kf=kcat (fiber-free release rate); relative uses the
+# centered loss. Without this a CV fold in absolute mode would score fit.coords (which carries
+# :kcat) through the CENTERED loss, silently discarding the scale it exists to measure.
+function cha_score_loss(enzyme::Symbol, mech, d::Dataset, coords::AbstractDict;
+                        keq::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy,
+                        scale::Symbol=:relative)
+    if scale === :absolute
+        c = Dict(coords)
+        kcat = pop!(c, :kcat)
+        return cha_absolute_logratio_loss(enzyme, mech, d, c; keq=keq, kf=kcat,
+                                          release_rate=CHA_ABS_RELEASE_RATE, variant=variant)
+    end
+    cha_centered_logratio_loss(enzyme, mech, d, coords; keq=keq, variant=variant)
 end
 
 # Map a per-row concentration NamedTuple to the keyword args of the enzyme's Cha law,
@@ -378,14 +436,21 @@ _default_release_rate(enzyme::Symbol) =
 # Single source of truth: the deploy call and the readoff both read it, so they cannot drift.
 const CHA_DEPLOY_RELEASE_RATE = 1.0e3
 
+# ABSOLUTE-mode release rate. Large enough that the SS-release fiber factor C = 1 + kf/koffQ ≈ 1
+# across the whole kcat bound (kf ≤ 1000), so kcat ≡ kf and Km ≡ α·Kd exactly (fiber-free).
+# Forward-only absolute data (P = PGLn = 0) makes this exact and numerically safe: the fiber
+# term kf·gAB/koffQ → 0, and konQ enters cha_rate_G6PD only as konQ/koffQ = 1/Km_NADPH_rev
+# (independent of the release-rate magnitude), so 1e8 introduces no large-number instability.
+const CHA_ABS_RELEASE_RATE = 1.0e8
+
 # -----------------------------------------------------------------------------------------
 #   Biophysical log10 bounds (lo, hi) aligned to cha_coords(enzyme). The Kd_*/Ki_*/Km_*_rev
 #   shape constants get -9..0 (1 nM .. 1 M), mirroring coord_bounds (coeff_fit.jl). :alpha is
 #   a dimensionless interaction factor, NOT a dissociation constant, so it gets a bounded
 #   interaction range -2..2 (0.01 .. 100) instead.
 # -----------------------------------------------------------------------------------------
-function cha_coord_bounds(enzyme::Symbol, variant::Symbol=:_deploy)
-    coords = cha_coords(enzyme, variant)
+function cha_coord_bounds(enzyme::Symbol, variant::Symbol=:_deploy; scale::Symbol=:relative)
+    coords = cha_coords(enzyme, variant; scale=scale)
     lo = Float64[]; hi = Float64[]
     for s in coords
         if s === :alpha
@@ -394,6 +459,10 @@ function cha_coord_bounds(enzyme::Symbol, variant::Symbol=:_deploy)
             # √(Kc·Kn)/Keff ∈ [2, 1000] in log10. The floor log10(2) is the real-roots
             # constraint (split_ratio = 2 ⇒ Kc = Kn, the single-site point; > 2 ⇒ two sites).
             push!(lo, log10(2.0)); push!(hi, 3.0)
+        elseif s === :kcat
+            # Turnover in s⁻¹: [10, 1000] (log10 [1, 3]). The SA-derived ~178 s⁻¹ and the
+            # 150–250 s⁻¹ literature band are a REPORT-time verdict, never a clamp.
+            push!(lo, 1.0); push!(hi, 3.0)
         else
             push!(lo, -9.0); push!(hi, 0.0)
         end
@@ -458,7 +527,8 @@ end
 # penalty is STRICTLY ADDITIVE on top of the unchanged centered log-ratio base loss -- only
 # applied when `anchors` carries entries -- so anchors=nothing (or empty) is a perfect no-op.
 function _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
-                             keq::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy)
+                             keq::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy,
+                             scale::Symbol=:relative)
     if !isempty(pins)
         u = collect(u)
         for (idx, k) in enumerate(coords_syms)
@@ -466,7 +536,16 @@ function _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
         end
     end
     coords_dict = Dict(coords_syms .=> 10 .^ u)
-    L = cha_centered_logratio_loss(enzyme, mech, d, coords_dict; keq=keq, variant=variant)
+    if scale === :absolute
+        # :kcat is a coord in absolute mode; pop it out of the binding-constant dict and pass
+        # it as kf at the fiber-free release rate (C=1). The anchor penalty reads only binding
+        # constants, so it stays on the popped dict.
+        kcat = pop!(coords_dict, :kcat)
+        L = cha_absolute_logratio_loss(enzyme, mech, d, coords_dict;
+                keq=keq, kf=kcat, release_rate=CHA_ABS_RELEASE_RATE, variant=variant)
+    else
+        L = cha_centered_logratio_loss(enzyme, mech, d, coords_dict; keq=keq, variant=variant)
+    end
     L += _cha_anchor_penalty(enzyme, coords_dict, anchors; variant=variant)
     L
 end
@@ -509,11 +588,11 @@ function cha_fit_candidate(enzyme::Symbol, mech, d::Dataset; n_restarts::Int=8,
                            maxiter::Int=1_000_000, maxtime::Real=20.0, seed::Int=1,
                            keq::Union{Nothing,Real}=nothing,
                            pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
-                           anchors=nothing, variant::Symbol=:_deploy)
-    coords_syms = cha_coords(enzyme, variant)
-    lo, hi = cha_coord_bounds(enzyme, variant)
+                           anchors=nothing, variant::Symbol=:_deploy, scale::Symbol=:relative)
+    coords_syms = cha_coords(enzyme, variant; scale=scale)
+    lo, hi = cha_coord_bounds(enzyme, variant; scale=scale)
     objective = u -> _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
-                                         keq=keq, variant=variant)
+                                         keq=keq, variant=variant, scale=scale)
     best = (u=fill(NaN, length(coords_syms)), loss=Inf)
     endpoints = Vector{Float64}[]
     losses = Float64[]
@@ -549,8 +628,9 @@ end
 #   fit decouple). All names resolve_cha_pins emits ARE coords on the happy path, so this only
 #   fires on a future coord-set change.
 # -----------------------------------------------------------------------------------------
-function _assert_pin_is_coord(enzyme::Symbol, name::Symbol, variant::Symbol=:_deploy)
-    name in cha_coords(enzyme, variant) && return nothing
+function _assert_pin_is_coord(enzyme::Symbol, name::Symbol, variant::Symbol=:_deploy;
+                              scale::Symbol=:relative)
+    name in cha_coords(enzyme, variant; scale=scale) && return nothing
     error("resolve_cha_pins: intended pin :$name (enzyme=$enzyme) is NOT a member of " *
           "cha_coords($enzyme) — the pin would be a silent no-op while the report still labels " *
           "it :literature_pinned at the anchor (report and fit disagree). Add :$name to " *
@@ -588,19 +668,33 @@ end
 #   NEVER as a hard coord-pin (mirrors pins.jl::resolve_coord_pins which keeps Km_PGA on the
 #   coord side; here Km_PGA is not even a coord).
 # -----------------------------------------------------------------------------------------
-function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol; anchor_reverse::Bool=true)
+function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol;
+        anchor_reverse::Bool=true, extra::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
+        scale::Symbol=:relative)
     lit    = FitRateEquation._lit_values(enzyme)
-    coords = cha_coords(enzyme, variant)
+    coords = cha_coords(enzyme, variant; scale=scale)
     pins   = Dict{Symbol,Float64}()
 
     # Emit a pin only after asserting the name is a real coord (ERROR-on-no-op). The literature
     # value MUST exist for any name we intend to pin; a missing lit entry is also a no-op risk.
     function _pin!(name::Symbol)
-        _assert_pin_is_coord(enzyme, name, variant)
+        _assert_pin_is_coord(enzyme, name, variant; scale=scale)
         haskey(lit, name) || error("resolve_cha_pins: intended pin :$name (enzyme=$enzyme, " *
             "mode=$mode) has no literature value in _lit_values($enzyme) — cannot anchor it.")
         pins[name] = lit[name]
         return nothing
+    end
+
+    # Merge the caller's explicit `extra` pins (coord ⇒ log10 value) OVER the mode-derived pins,
+    # each guarded by _assert_pin_is_coord (errors on a non-coord / silent no-op). This is how
+    # the absolute-mode ladder pins reverse/degenerate constants to data-determined values from
+    # a prior relative fit. Applied on EVERY return path (below) so it composes with HK1 too.
+    function _finish(p)
+        for (k, v) in extra
+            _assert_pin_is_coord(enzyme, k, variant; scale=scale)
+            p[k] = v
+        end
+        p
     end
 
     # HK1 per-mode pin sets. Mode 1: nothing pinned (all forward shape constants free).
@@ -609,7 +703,7 @@ function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol; anchor_
     if enzyme === :HK1
         # H4 is the data-driven reparameterized variant {Keff, split_ratio}: NO pins in any mode
         # (the literature pin names Ki_G6P_N/Ki_G6P_C are not H4 coords by construction).
-        variant === :H4 && return pins
+        variant === :H4 && return _finish(pins)
         if mode === :mode2 || mode === :mode3
             _pin!(:Ki_G6P_N); _pin!(:K_Pi_N)
         end
@@ -619,7 +713,7 @@ function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol; anchor_
         if mode ∉ (:mode1, :mode2, :mode3)
             error("resolve_cha_pins: unknown mode :$mode (expected :mode1/:mode2/:mode3)")
         end
-        return pins
+        return _finish(pins)
     end
 
     # ALL MODES: anchor the conflating reverse channel where it is a coord with a lit value.
@@ -634,7 +728,7 @@ function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol; anchor_
         error("resolve_cha_pins: unknown mode :$mode (expected :mode1, :mode2, or :mode3)")
     end
 
-    pins
+    _finish(pins)
 end
 
 end # module ChaFit
