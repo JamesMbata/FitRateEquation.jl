@@ -877,7 +877,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces: `--scale relative|absolute` parsed into the `fit_consensus_equation` call.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `test/test_cli.jl` (mirror the file's existing arg-parse test idiom):
 ```julia
@@ -888,21 +888,21 @@ end
 ```
 (Use the real parser function/return shape in `cli.jl`; if the CLI parses directly into a call, assert via a dry-run flag instead.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_cli.jl`
 Expected: FAIL — `--scale` unknown.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add `--scale` handling to `cli_main`/the arg parser, defaulting to `:relative`, forwarded to `fit_consensus_equation(...; scale=...)`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `julia --project test/test_cli.jl`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cli.jl test/test_cli.jl

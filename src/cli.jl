@@ -9,12 +9,13 @@ Usage: fitrateequation <subcommand> [flags]
   g6pd | pgd | hk1                Fit an enzyme (writes artifacts to --outdir)
   plot <run_dir>                  Render the fitted law over the corpus (needs CairoMakie)
   help                            Show this message
-Flags: --smoke  --nprocs N  --outdir DIR  --data CSV  --variant NAME
+Flags: --smoke  --nprocs N  --outdir DIR  --data CSV  --variant NAME  --scale MODE
   --variant NAME  Fit an alternative rate law (e.g. no_atp, full_re, no_g6p_atp_deadend)
   --data CSV      Fit your own corpus (canonical columns required)
+  --scale MODE    relative (default) or absolute (G6PD only; needs a [G6PD] (nM) column)
 """
 
-_EMPTY_OPTS = (smoke=false, nprocs=nothing, outdir=nothing, rundir=nothing, data=nothing, variant=nothing)
+_EMPTY_OPTS = (smoke=false, nprocs=nothing, outdir=nothing, rundir=nothing, data=nothing, variant=nothing, scale=:relative)
 
 function parse_cli(argv::AbstractVector{<:AbstractString})
     isempty(argv) && return ("help", _EMPTY_OPTS)
@@ -22,6 +23,7 @@ function parse_cli(argv::AbstractVector{<:AbstractString})
     (sub in ("-h", "--help", "help")) && return ("help", _EMPTY_OPTS)
     sub in _CLI_SUBS || error("unknown subcommand: $sub\n\n$CLI_USAGE")
     smoke = false; nprocs = nothing; outdir = nothing; rundir = nothing; data = nothing; variant = nothing
+    scale = :relative
     i = 2
     while i <= length(argv)
         tok = String(argv[i])
@@ -42,6 +44,12 @@ function parse_cli(argv::AbstractVector{<:AbstractString})
             sub in ("g6pd", "pgd", "hk1") || error("--variant is only valid with an enzyme subcommand\n\n$CLI_USAGE")
             i < length(argv) || error("--variant requires a value")
             variant = String(argv[i+1]); i += 2
+        elseif tok == "--scale"
+            sub in ("g6pd", "pgd", "hk1") || error("--scale is only valid with an enzyme subcommand\n\n$CLI_USAGE")
+            i < length(argv) || error("--scale requires a value")
+            argv[i+1] in ("relative", "absolute") ||
+                error("--scale must be relative or absolute (got $(argv[i+1]))")
+            scale = Symbol(argv[i+1]); i += 2
         elseif startswith(tok, "-")
             error("unknown flag: $tok\n\n$CLI_USAGE")
         elseif sub == "plot" && rundir === nothing
@@ -51,7 +59,7 @@ function parse_cli(argv::AbstractVector{<:AbstractString})
         end
     end
     sub == "plot" && rundir === nothing && error("plot requires a <run_dir>\n\n$CLI_USAGE")
-    return (sub, (smoke=smoke, nprocs=nprocs, outdir=outdir, rundir=rundir, data=data, variant=variant))
+    return (sub, (smoke=smoke, nprocs=nprocs, outdir=outdir, rundir=rundir, data=data, variant=variant, scale=scale))
 end
 
 function cli_main(argv::AbstractVector{<:AbstractString})
@@ -63,7 +71,7 @@ function cli_main(argv::AbstractVector{<:AbstractString})
         enz = Symbol(sub)                       # :g6pd / :pgd / :hk1
         variants = o.variant === nothing ? nothing : [Symbol(o.variant)]
         fit_consensus_equation(enz; smoke=o.smoke, nprocs=o.nprocs, outdir=o.outdir,
-                               data_csv=o.data, variants=variants)
+                               data_csv=o.data, variants=variants, scale=o.scale)
     end
     return 0
 end
