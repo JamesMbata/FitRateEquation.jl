@@ -381,3 +381,12 @@ end
     @test ChaFit.cha_centered_logratio_loss(:G6PD, m, d, coords) == 0.4788384934247699
     @test ChaFit.cha_centered_logratio_loss(:G6PD, m, d, coords; keq=13.655) == 0.47885726568219367
 end
+
+@testset "resolve_cha_pins merges explicit extra pins (guarded)" begin
+    p = ChaFit.resolve_cha_pins(:G6PD, :_deploy, :mode1;
+            extra=Dict(:Kd_6PGLn=>log10(2.1e-4)), scale=:absolute)
+    @test p[:Kd_6PGLn] == log10(2.1e-4)
+    # bogus coord errors
+    @test_throws ErrorException ChaFit.resolve_cha_pins(:G6PD, :_deploy, :mode1;
+            extra=Dict(:NotACoord=>0.0), scale=:absolute)
+end

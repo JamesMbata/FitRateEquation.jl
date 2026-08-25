@@ -536,7 +536,7 @@ Lets the caller pin any coord to an explicit log10 value on top of the mode-deri
 **Interfaces:**
 - Produces: `resolve_cha_pins(enzyme, variant, mode; anchor_reverse=true, extra::Dict{Symbol,Float64}=Dict(), scale::Symbol=:relative)` merges `extra` over the mode pins after asserting each key is a coord for `(enzyme,variant,scale)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `test/test_cha_fit.jl`:
 ```julia
@@ -550,12 +550,12 @@ Append to `test/test_cha_fit.jl`:
 end
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_cha_fit.jl`
 Expected: FAIL — `resolve_cha_pins` has no `extra`/`scale` kwargs.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Extend `resolve_cha_pins` signature and, before returning `pins`, merge `extra` with the guard (thread `scale` into the coord checks, since `:kcat` is only a coord in absolute mode):
 ```julia
@@ -579,12 +579,12 @@ function _assert_pin_is_coord(enzyme::Symbol, name::Symbol, variant::Symbol=:_de
 end
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `julia --project test/test_cha_fit.jl`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cha_fit.jl test/test_cha_fit.jl

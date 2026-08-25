@@ -611,8 +611,9 @@ end
 #   fit decouple). All names resolve_cha_pins emits ARE coords on the happy path, so this only
 #   fires on a future coord-set change.
 # -----------------------------------------------------------------------------------------
-function _assert_pin_is_coord(enzyme::Symbol, name::Symbol, variant::Symbol=:_deploy)
-    name in cha_coords(enzyme, variant) && return nothing
+function _assert_pin_is_coord(enzyme::Symbol, name::Symbol, variant::Symbol=:_deploy;
+                              scale::Symbol=:relative)
+    name in cha_coords(enzyme, variant; scale=scale) && return nothing
     error("resolve_cha_pins: intended pin :$name (enzyme=$enzyme) is NOT a member of " *
           "cha_coords($enzyme) — the pin would be a silent no-op while the report still labels " *
           "it :literature_pinned at the anchor (report and fit disagree). Add :$name to " *
@@ -650,19 +651,33 @@ end
 #   NEVER as a hard coord-pin (mirrors pins.jl::resolve_coord_pins which keeps Km_PGA on the
 #   coord side; here Km_PGA is not even a coord).
 # -----------------------------------------------------------------------------------------
-function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol; anchor_reverse::Bool=true)
+function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol;
+        anchor_reverse::Bool=true, extra::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
+        scale::Symbol=:relative)
     lit    = FitRateEquation._lit_values(enzyme)
-    coords = cha_coords(enzyme, variant)
+    coords = cha_coords(enzyme, variant; scale=scale)
     pins   = Dict{Symbol,Float64}()
 
     # Emit a pin only after asserting the name is a real coord (ERROR-on-no-op). The literature
     # value MUST exist for any name we intend to pin; a missing lit entry is also a no-op risk.
     function _pin!(name::Symbol)
-        _assert_pin_is_coord(enzyme, name, variant)
+        _assert_pin_is_coord(enzyme, name, variant; scale=scale)
         haskey(lit, name) || error("resolve_cha_pins: intended pin :$name (enzyme=$enzyme, " *
             "mode=$mode) has no literature value in _lit_values($enzyme) — cannot anchor it.")
         pins[name] = lit[name]
         return nothing
+    end
+
+    # Merge the caller's explicit `extra` pins (coord ⇒ log10 value) OVER the mode-derived pins,
+    # each guarded by _assert_pin_is_coord (errors on a non-coord / silent no-op). This is how
+    # the absolute-mode ladder pins reverse/degenerate constants to data-determined values from
+    # a prior relative fit. Applied on EVERY return path (below) so it composes with HK1 too.
+    function _finish(p)
+        for (k, v) in extra
+            _assert_pin_is_coord(enzyme, k, variant; scale=scale)
+            p[k] = v
+        end
+        p
     end
 
     # HK1 per-mode pin sets. Mode 1: nothing pinned (all forward shape constants free).
@@ -671,7 +686,7 @@ function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol; anchor_
     if enzyme === :HK1
         # H4 is the data-driven reparameterized variant {Keff, split_ratio}: NO pins in any mode
         # (the literature pin names Ki_G6P_N/Ki_G6P_C are not H4 coords by construction).
-        variant === :H4 && return pins
+        variant === :H4 && return _finish(pins)
         if mode === :mode2 || mode === :mode3
             _pin!(:Ki_G6P_N); _pin!(:K_Pi_N)
         end
@@ -681,7 +696,7 @@ function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol; anchor_
         if mode ∉ (:mode1, :mode2, :mode3)
             error("resolve_cha_pins: unknown mode :$mode (expected :mode1/:mode2/:mode3)")
         end
-        return pins
+        return _finish(pins)
     end
 
     # ALL MODES: anchor the conflating reverse channel where it is a coord with a lit value.
@@ -696,7 +711,7 @@ function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol; anchor_
         error("resolve_cha_pins: unknown mode :$mode (expected :mode1, :mode2, or :mode3)")
     end
 
-    pins
+    _finish(pins)
 end
 
 end # module ChaFit
