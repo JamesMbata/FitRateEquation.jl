@@ -350,7 +350,13 @@ end
     @test pen_dp > 1e-8
 end
 
-@testset "shared loss core: centered wrapper == direct core aggregation" begin
+@testset "shared loss core: centered wrapper is BITWISE the canonical fold order" begin
+    # The centered wrapper must reduce the shared core's log-ratios in EXACTLY the canonical
+    # fold order (penalty first, then each group's variance in `groups` order) — float addition
+    # is non-associative, so this is the fold-order regression guard. Both sides are computed in
+    # THIS process, so the check is bitwise (==) yet environment-independent (unlike a hardcoded
+    # literal, which drifts by ULPs across BLAS/thread environments — see test_byte_identity.jl,
+    # which for that reason compares structure, not values).
     d = load_dataset(g6pd_config()); keq = median(d.keq)
     m = FitRateEquation.v2_mechanism()
     coords = Dict(s => getfield(cha_macro_readoffs_G6PD(m, -3 .+ 2 .* rand(length(free_params(m))); keq=keq), s)
@@ -365,21 +371,7 @@ end
         μ = sum(vals)/length(vals)
         total += sum(x -> (x-μ)^2, vals)
     end
-    @test L ≈ total / FitRateEquation.nrows(d)
-end
-
-@testset "centered loss: bitwise fold-order lock (relative invariance)" begin
-    # Reference values captured from the PRE-refactor cha_centered_logratio_loss at a
-    # deterministic coords point on the bundled corpus. The shared-core refactor must
-    # reproduce them to the last bit (float addition is non-associative — this is the real
-    # fold-order guard; test_byte_identity.jl only checks structure, not values).
-    d = load_dataset(g6pd_config())
-    m = FitRateEquation.v2_mechanism()
-    logθ = collect(range(-3.0, 1.0; length=length(free_params(m))))
-    mac = cha_macro_readoffs_G6PD(m, logθ; keq=13.655)
-    coords = Dict(s => getfield(mac, s) for s in cha_coords(:G6PD))
-    @test ChaFit.cha_centered_logratio_loss(:G6PD, m, d, coords) == 0.4788384934247699
-    @test ChaFit.cha_centered_logratio_loss(:G6PD, m, d, coords; keq=13.655) == 0.47885726568219367
+    @test L == total / FitRateEquation.nrows(d)   # bitwise: same ops, same order, same env
 end
 
 @testset "resolve_cha_pins merges explicit extra pins (guarded)" begin

@@ -38,10 +38,10 @@ end
 @testset "absolute mode: guards" begin
     # non-G6PD is rejected
     @test_throws ErrorException fit_consensus_equation(:pgd; scale=:absolute, smoke=true,
-        outdir=mktempdir())
+        nprocs=1, outdir=mktempdir())
     # G6PD absolute on a corpus WITHOUT [G6PD] (nM) errors naming the column
     err = try
-        fit_consensus_equation(:g6pd; scale=:absolute, smoke=true, outdir=mktempdir())
+        fit_consensus_equation(:g6pd; scale=:absolute, smoke=true, nprocs=1, outdir=mktempdir())
         nothing
     catch e; e end
     @test err isa ErrorException
@@ -50,7 +50,7 @@ end
 
 @testset "absolute mode: smoke fit on mini forward corpus runs" begin
     out = mktempdir()
-    res = fit_consensus_equation(:g6pd; scale=:absolute, smoke=true, outdir=out,
+    res = fit_consensus_equation(:g6pd; scale=:absolute, smoke=true, nprocs=1, outdir=out,
         data_csv=joinpath(@__DIR__, "fixtures", "g6pd_abs_mini.csv"),
         pins=Dict(:Kd_6PGLn=>log10(2.1e-4), :Km_NADPH_rev=>log10(3.9e-6)))
     @test !isempty(res)

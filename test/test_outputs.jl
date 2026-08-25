@@ -163,7 +163,7 @@ end
 
 @testset "absolute outputs record scale + kcat verdict" begin
     out = mktempdir()
-    fit_consensus_equation(:g6pd; scale=:absolute, smoke=true, outdir=out,
+    fit_consensus_equation(:g6pd; scale=:absolute, smoke=true, nprocs=1, outdir=out,
         data_csv=joinpath(@__DIR__, "fixtures", "g6pd_abs_mini.csv"),
         pins=Dict(:Kd_6PGLn=>log10(2.1e-4), :Km_NADPH_rev=>log10(3.9e-6)))
     prov = read(joinpath(out, "provenance.toml"), String)
