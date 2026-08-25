@@ -1,6 +1,6 @@
 # G6PD Absolute-Scale Fitting Mode — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add an orthogonal `scale=:relative|:absolute` axis to the G6PD Cha fitting path, so an uncentered loss over single-scale forward-only data can discriminate the dead-end variants and recover `kcat`.
 
@@ -28,7 +28,7 @@
 
 **Files:** none (environment only).
 
-- [ ] **Step 1: Instantiate the worktree project**
+- [x] **Step 1: Instantiate the worktree project**
 
 Run:
 ```bash
@@ -41,12 +41,12 @@ cp /home/james/projects/FitRateEquation.jl/Manifest.toml .   # gitignored; local
 julia --project -e 'using Pkg; Pkg.instantiate()'
 ```
 
-- [ ] **Step 2: Run the full baseline suite**
+- [x] **Step 2: Run the full baseline suite**
 
 Run: `julia --project -e 'using Pkg; Pkg.test()'`
 Expected: PASS (clean baseline). If any test fails on a fresh `main` baseline, STOP and report — do not build on a red baseline.
 
-- [ ] **Step 3: No commit** (environment only; Manifest is gitignored).
+- [x] **Step 3: No commit** (environment only; Manifest is gitignored).
 
 ---
 
@@ -62,7 +62,7 @@ Adds the per-row enzyme concentration carried by a new `[G6PD] (nM)` corpus colu
 **Interfaces:**
 - Produces: `Dataset` gains field `Et::Vector{Float64}` (5th, M units; `NaN` where absent). Back-compat `Dataset(concs, rate, group, keq)` fills `Et` with `NaN`. `g6pd_config()` gains `enzyme_conc_col::String`, `enzyme_conc_unit::Symbol`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create a tiny fixture `test/fixtures/g6pd_abs_mini.csv` (forward-only, 4 rows, includes `[G6PD] (nM)`):
 ```csv
@@ -93,12 +93,12 @@ end
 end
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_data.jl`
 Expected: FAIL — `enzyme_conc_col` not in config / `Dataset` has no field `Et`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/core/data.jl`, extend the struct and add a back-compat constructor:
 ```julia
@@ -137,12 +137,12 @@ In `src/configs/G6PD.jl`, add the two fields to the returned NamedTuple:
         enzyme_conc_unit = :nM,
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `julia --project test/test_data.jl`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/data.jl src/configs/G6PD.jl test/test_data.jl test/fixtures/g6pd_abs_mini.csv

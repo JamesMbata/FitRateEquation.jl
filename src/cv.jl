@@ -18,8 +18,10 @@ function _article_folds(d::Dataset)
     folds
 end
 
+# Carry Et through the subset so absolute-mode CV folds keep each row's enzyme concentration
+# (byte-identical for relative mode: Et is all-NaN there, so d.Et[idx] == fill(NaN,...)).
 _subset(d::Dataset, idx) =
-    Dataset(d.concs[idx], d.rate[idx], d.group[idx], d.keq[idx])
+    Dataset(d.concs[idx], d.rate[idx], d.group[idx], d.keq[idx], d.Et[idx])
 
 # Leave-one-article-out CV runs in Cha macro-coordinate space; the live driver is
 # `_cha_loocv` (run.jl), which reuses the `_article`/`_article_folds`/`_subset` helpers

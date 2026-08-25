@@ -109,3 +109,20 @@ end
     @test got.rate  == ref.rate
     @test got.group == ref.group
 end
+
+@testset "Et column: [G6PD] (nM) -> M, present in Dataset" begin
+    cfg = FitRateEquation.g6pd_config(
+        data_csv = joinpath(@__DIR__, "fixtures", "g6pd_abs_mini.csv"))
+    @test cfg.enzyme_conc_col == "[G6PD] (nM)"
+    @test cfg.enzyme_conc_unit == :nM
+    d = FitRateEquation.load_dataset(cfg)
+    @test length(d.Et) == FitRateEquation.nrows(d)
+    @test all(d.Et .== 5.0e-9)            # 5 nM -> 5e-9 M
+end
+
+@testset "Et back-compat: 4-arg Dataset fills Et with NaN" begin
+    d0 = FitRateEquation.load_dataset(FitRateEquation.g6pd_config())
+    d1 = Dataset(d0.concs, d0.rate, d0.group, d0.keq)   # 4-arg positional (existing idiom)
+    @test length(d1.Et) == FitRateEquation.nrows(d1)
+    @test all(isnan, d1.Et)
+end
