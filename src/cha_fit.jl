@@ -39,9 +39,9 @@
 module ChaFit
 
 export cha_coords, cha_macro_tuple, cha_haldane_kr, CHA_KDRU_DEFAULT
-export cha_centered_logratio_loss
+export cha_centered_logratio_loss, cha_absolute_logratio_loss
 export cha_fit_candidate, cha_coord_bounds
-export cha_apparent_km, cha_specificity, CHA_DEPLOY_RELEASE_RATE
+export cha_apparent_km, cha_specificity, CHA_DEPLOY_RELEASE_RATE, CHA_ABS_RELEASE_RATE
 export resolve_cha_pins
 
 # Parent-relative imports so ChaFit composes BOTH as a Main-level module (tests, where the
@@ -306,7 +306,13 @@ function _cha_row_logratios!(logratio, enzyme::Symbol, mech, d::Dataset, coords:
                             release_rate=release_rate, release_eq=release_eq, kr=kr,
                             variant=variant)
         for i in idx
-            v = cha_rate_enz(m; _cha_row_kwargs(enzyme, d.concs[i])...)
+            vunit = cha_rate_enz(m; _cha_row_kwargs(enzyme, d.concs[i])...)
+            # Per-row enzyme concentration is a LINEAR prefactor (v = Et·kcat·f): the macro
+            # tuple stays at the unit gauge (scalar Et kwarg, default 1.0) and d.Et[i] scales
+            # the prediction. NaN (relative mode / no [G6PD] column) => 1.0, a strict no-op —
+            # so the centered path is byte-identical (locked by test_cha_fit.jl fold-order test).
+            eti = isnan(d.Et[i]) ? 1.0 : d.Et[i]
+            v = eti * vunit
             o = d.rate[i]
             if !isfinite(v) || v == 0 || sign(v) != sign(o)
                 penalty += _SIGN_PENALTY
@@ -341,6 +347,27 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
         isempty(vals) && continue
         μ = sum(vals) / length(vals)
         total += sum(x -> (x - μ)^2, vals)
+    end
+    total / n
+end
+
+# Thin ABSOLUTE aggregator: UNCENTERED sum-of-squares of the shared core's log-ratios. Unlike
+# the centered loss it does NOT subtract a per-group mean, so between-condition absolute rate
+# magnitudes become discriminating signal (§2 of the design). Per-row `d.Et` enters the core as
+# a linear prefactor and the caller supplies `kf = kcat` at `release_rate = CHA_ABS_RELEASE_RATE`
+# (fiber-free C = 1). The scalar `Et` gauge stays 1.0 — the per-row scale lives in `d.Et`.
+function cha_absolute_logratio_loss(enzyme::Symbol, mech, d::Dataset, coords::AbstractDict;
+        keq::Union{Nothing,Real}=nothing, kf::Real=1.0,
+        release_rate::Real = CHA_ABS_RELEASE_RATE,
+        release_eq::Real = _default_release_eq(enzyme, coords),
+        kr::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy)
+    n = nrows(d)
+    logratio = fill(NaN, n)
+    penalty, _ = _cha_row_logratios!(logratio, enzyme, mech, d, coords; keq=keq, kf=kf,
+        Et=1.0, release_rate=release_rate, release_eq=release_eq, kr=kr, variant=variant)
+    total = penalty
+    for x in logratio
+        isfinite(x) && (total += x * x)
     end
     total / n
 end
@@ -387,6 +414,13 @@ _default_release_rate(enzyme::Symbol) =
 # Km describes the law actually written to model_parameters.jl, not the fit-fiber default.
 # Single source of truth: the deploy call and the readoff both read it, so they cannot drift.
 const CHA_DEPLOY_RELEASE_RATE = 1.0e3
+
+# ABSOLUTE-mode release rate. Large enough that the SS-release fiber factor C = 1 + kf/koffQ ≈ 1
+# across the whole kcat bound (kf ≤ 1000), so kcat ≡ kf and Km ≡ α·Kd exactly (fiber-free).
+# Forward-only absolute data (P = PGLn = 0) makes this exact and numerically safe: the fiber
+# term kf·gAB/koffQ → 0, and konQ enters cha_rate_G6PD only as konQ/koffQ = 1/Km_NADPH_rev
+# (independent of the release-rate magnitude), so 1e8 introduces no large-number instability.
+const CHA_ABS_RELEASE_RATE = 1.0e8
 
 # -----------------------------------------------------------------------------------------
 #   Biophysical log10 bounds (lo, hi) aligned to cha_coords(enzyme). The Kd_*/Ki_*/Km_*_rev

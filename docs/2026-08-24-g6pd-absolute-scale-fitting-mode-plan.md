@@ -285,7 +285,7 @@ Adds the uncentered aggregator and the linear per-row `Et` prefactor, and wires 
 - Consumes: `_cha_row_logratios!` (Task 2).
 - Produces: `ChaFit.cha_absolute_logratio_loss(enzyme, mech, d, coords; keq, kf, release_rate, release_eq, kr, variant) -> Float64` (uncentered `sum(logratio²)/n`, per-row `Et` from `d.Et`). `_cha_loss_with_pins(...; scale::Symbol=:relative)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `test/test_cha_absolute.jl`:
 ```julia
@@ -332,12 +332,12 @@ end
 end
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_cha_absolute.jl`
 Expected: FAIL — `CHA_ABS_RELEASE_RATE` / `cha_absolute_logratio_loss` undefined; `Et` kwarg not applied per-row.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/cha_fit.jl`:
 1. Add the constant near `CHA_DEPLOY_RELEASE_RATE`:
@@ -373,12 +373,12 @@ function cha_absolute_logratio_loss(enzyme::Symbol, mech, d::Dataset, coords::Ab
 end
 ```
 
-- [ ] **Step 4: Run tests to verify pass (incl. bit-identity no-op)**
+- [x] **Step 4: Run tests to verify pass (incl. bit-identity no-op)**
 
 Run: `julia --project test/test_cha_absolute.jl && julia --project test/test_byte_identity.jl`
 Expected: PASS both.
 
-- [ ] **Step 5: Add to runtests and commit**
+- [x] **Step 5: Add to runtests and commit**
 
 Add `include("test_cha_absolute.jl")` to `test/runtests.jl` (after `test_cha_fit.jl`).
 ```bash

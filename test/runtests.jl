@@ -12,6 +12,7 @@ using Test
     include("test_cha_laws.jl")
     include("test_cha_invert.jl")
     include("test_cha_fit.jl")
+    include("test_cha_absolute.jl")
     include("test_cha_pgd_fullre_fit.jl")
     include("test_cha_classify.jl")
     include("test_cha_deploy.jl")
