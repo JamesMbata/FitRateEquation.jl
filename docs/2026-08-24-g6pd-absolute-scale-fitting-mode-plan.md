@@ -762,7 +762,7 @@ Makes the readoff/classification/deploy path handle the extra `:kcat` coord (ide
 - Consumes: absolute-mode fit `coords` containing `:kcat`.
 - Produces: `classify_cha` returns a row for `:kcat` (labeled data-identified in absolute mode); `cha_deploy_micro` uses `kf = coords[:kcat]` when present (else the gauge `kf=1`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `test/test_cha_classify.jl`:
 ```julia
@@ -779,22 +779,22 @@ end
 ```
 (Match the actual `classify_cha` positional/kwarg shape used elsewhere in this test file; add a `scale` kwarg defaulting to `:relative`.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_cha_classify.jl`
 Expected: FAIL — `classify_cha` lacks `scale`/`:kcat` handling.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 - `classify_cha`: add `scale::Symbol=:relative`; when absolute, include `:kcat` in the classified coords (report its fitted value; identifiability via the existing Hessian machinery over the absolute loss). Thread `scale` to any internal `cha_coords`/`cha_identifiable_functions` calls.
 - `cha_deploy_micro` / `cha_invert`: read `kf = get(coords, :kcat, 1.0)` so the deployed micro map carries the fitted absolute scale (byproduct) instead of the `kf=1` gauge; everything else unchanged.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `julia --project test/test_cha_classify.jl && julia --project test/test_cha_deploy.jl`
 Expected: PASS both (relative path unchanged: `get(coords, :kcat, 1.0)` → 1.0).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cha_classify.jl src/cha_invert.jl src/cha_deploy.jl test/test_cha_classify.jl

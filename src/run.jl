@@ -262,11 +262,13 @@ function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbo
               se      = isempty(losses) ? 0.0 : std(losses)/sqrt(length(losses)))
         r = (variant=variant, mode=mode, mech=mech, pins=pins, anchors=anchors, fit=fit, cv=cv)
         idf = ChaClassify.cha_identifiable_functions(enzyme, mech, d, r.fit.coords;
-                    keq=(enzyme === :HK1 ? median(d.keq) : nothing), pins=pins, variant=variant)
+                    keq=(enzyme === :HK1 ? median(d.keq) : nothing), pins=pins, variant=variant,
+                    scale=scale)
         # Residual variance σ̂² = in-sample loss / dof, for the calibrated macro-constant CIs.
         sigma2 = r.fit.loss / max(nrows(d) - idf.rank, 1)
         classed = ChaClassify.classify_cha(enzyme, mech, d, r.fit.coords, pins, idf;
-                                            keq=keq, sigma2=sigma2, variant=variant, mode=mode)
+                                            keq=keq, sigma2=sigma2, variant=variant, mode=mode,
+                                            scale=scale)
         push!(results, (variant=variant, mode=mode, r=r, idf=idf, classed=classed))
     end
     results

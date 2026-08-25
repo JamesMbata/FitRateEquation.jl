@@ -59,3 +59,23 @@ _classify_with_rates(d, r) = Dataset(d.concs, collect(float.(r)), d.group, d.keq
     # Known-flat coord under all-free fitting: NOT data_identified.
     @test cl(:Km_NADPH_rev).class !== :data_identified
 end
+
+@testset "classify + identifiability handle :kcat in absolute mode" begin
+    cfg = FitRateEquation.g6pd_config(data_csv=joinpath(@__DIR__, "fixtures", "g6pd_abs_mini.csv"))
+    d = FitRateEquation.load_dataset(cfg)
+    m = FitRateEquation.v2_mechanism()
+    coords = Dict{Symbol,Float64}(
+        :Kd_NADP=>5e-5, :Kd_G6P=>2e-4, :Kd_6PGLn=>2e-4, :alpha=>1.0,
+        :Ki_NADPH=>2e-5, :Ki_ATP=>1.5e-3, :Ki_ATP_EG=>3e-2, :Km_NADPH_rev=>3.9e-6,
+        :kcat=>178.0)
+    pins = Dict{Symbol,Float64}()
+    # Absolute-mode identifiability includes :kcat as a free coord (Hessian over the absolute loss).
+    idf = cha_identifiable_functions(:G6PD, m, d, coords; keq=13.655, pins=pins, scale=:absolute)
+    @test length(idf.idx) == length(cha_coords(:G6PD, :_deploy; scale=:absolute))
+    classed = classify_cha(:G6PD, m, d, coords, pins, idf; keq=13.655, sigma2=1.0, scale=:absolute)
+    @test any(c -> c.name == :kcat, classed)
+    # relative default still excludes :kcat (row absent)
+    idf_r = cha_identifiable_functions(:G6PD, m, d, coords; keq=13.655, pins=pins)
+    classed_r = classify_cha(:G6PD, m, d, coords, pins, idf_r; keq=13.655, sigma2=1.0)
+    @test !any(c -> c.name == :kcat, classed_r)
+end
