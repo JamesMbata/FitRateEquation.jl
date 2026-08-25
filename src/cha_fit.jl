@@ -78,9 +78,12 @@ _hk1_variant_alpha(variant::Symbol) =
 #   (kf, Et), the swept fiber (release_rate = koffQ / koff and its on-rate konQ / kon), and
 #   the Haldane-determined reverse catalysis kr.
 # -----------------------------------------------------------------------------------------
-function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy)
-    if enzyme === :G6PD
-        return variant === :no_atp ?
+# `scale=:absolute` appends the turnover coord `:kcat` for G6PD (the single source of truth
+# for the parameter vector — bounds, the CMA-ES vector, pins, and _assert_pin_is_coord all key
+# off this). For every relative-mode caller (the default) the returned coord set is unchanged.
+function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy; scale::Symbol=:relative)
+    base = if enzyme === :G6PD
+        variant === :no_atp ?
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Km_NADPH_rev] :
         variant === :no_g6p_nadph_deadend ?
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_ATP, :Ki_ATP_EG, :Km_NADPH_rev] :
@@ -91,7 +94,7 @@ function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy)
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EG,
              :Km_NADPH_rev]
     elseif enzyme === :PGD
-        return variant === :full_re ?
+        variant === :full_re ?
             # Fully-RE (fiber-free): NO promoted-release fiber DOF, NO separate forward Ki_NADPH.
             # Kd_NADPH is the single competitive NADPH constant (Km_NADPH_rev ≡ Kd_NADPH); Kd_Ru5P
             # is a real RE coord. Effector coords (:Ki_ATP/:Ki_ATP_EN/:Ki_NADPH) are appended by
@@ -106,12 +109,13 @@ function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy)
         # identified split). The back-map (cha_macro_tuple, variant=:H4) reconstructs Kc,Kn.
         # H1/H3 keep the raw {Ki_G6P_C, Ki_G6P_N} coords.
         # See notes/2026-06-13_hk1_g6p_ridge_resolution_report.md.
-        return variant === :H4 ?
+        variant === :H4 ?
             [:Kd_Glc, :Kd_ATP, :Keff, :Ki_ADP, :split_ratio, :K_Pi_N] :
             [:Kd_Glc, :Kd_ATP, :Ki_G6P_C, :Ki_ADP, :Ki_G6P_N, :K_Pi_N]
     else
         error("cha_coords: unknown enzyme $enzyme (expected :G6PD, :PGD, or :HK1)")
     end
+    (enzyme === :G6PD && scale === :absolute) ? vcat(base, :kcat) : base
 end
 
 # -----------------------------------------------------------------------------------------
@@ -428,8 +432,8 @@ const CHA_ABS_RELEASE_RATE = 1.0e8
 #   a dimensionless interaction factor, NOT a dissociation constant, so it gets a bounded
 #   interaction range -2..2 (0.01 .. 100) instead.
 # -----------------------------------------------------------------------------------------
-function cha_coord_bounds(enzyme::Symbol, variant::Symbol=:_deploy)
-    coords = cha_coords(enzyme, variant)
+function cha_coord_bounds(enzyme::Symbol, variant::Symbol=:_deploy; scale::Symbol=:relative)
+    coords = cha_coords(enzyme, variant; scale=scale)
     lo = Float64[]; hi = Float64[]
     for s in coords
         if s === :alpha
@@ -438,6 +442,10 @@ function cha_coord_bounds(enzyme::Symbol, variant::Symbol=:_deploy)
             # √(Kc·Kn)/Keff ∈ [2, 1000] in log10. The floor log10(2) is the real-roots
             # constraint (split_ratio = 2 ⇒ Kc = Kn, the single-site point; > 2 ⇒ two sites).
             push!(lo, log10(2.0)); push!(hi, 3.0)
+        elseif s === :kcat
+            # Turnover in s⁻¹: [10, 1000] (log10 [1, 3]). The SA-derived ~178 s⁻¹ and the
+            # 150–250 s⁻¹ literature band are a REPORT-time verdict, never a clamp.
+            push!(lo, 1.0); push!(hi, 3.0)
         else
             push!(lo, -9.0); push!(hi, 0.0)
         end
@@ -502,7 +510,8 @@ end
 # penalty is STRICTLY ADDITIVE on top of the unchanged centered log-ratio base loss -- only
 # applied when `anchors` carries entries -- so anchors=nothing (or empty) is a perfect no-op.
 function _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
-                             keq::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy)
+                             keq::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy,
+                             scale::Symbol=:relative)
     if !isempty(pins)
         u = collect(u)
         for (idx, k) in enumerate(coords_syms)
@@ -510,7 +519,16 @@ function _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
         end
     end
     coords_dict = Dict(coords_syms .=> 10 .^ u)
-    L = cha_centered_logratio_loss(enzyme, mech, d, coords_dict; keq=keq, variant=variant)
+    if scale === :absolute
+        # :kcat is a coord in absolute mode; pop it out of the binding-constant dict and pass
+        # it as kf at the fiber-free release rate (C=1). The anchor penalty reads only binding
+        # constants, so it stays on the popped dict.
+        kcat = pop!(coords_dict, :kcat)
+        L = cha_absolute_logratio_loss(enzyme, mech, d, coords_dict;
+                keq=keq, kf=kcat, release_rate=CHA_ABS_RELEASE_RATE, variant=variant)
+    else
+        L = cha_centered_logratio_loss(enzyme, mech, d, coords_dict; keq=keq, variant=variant)
+    end
     L += _cha_anchor_penalty(enzyme, coords_dict, anchors; variant=variant)
     L
 end
@@ -553,11 +571,11 @@ function cha_fit_candidate(enzyme::Symbol, mech, d::Dataset; n_restarts::Int=8,
                            maxiter::Int=1_000_000, maxtime::Real=20.0, seed::Int=1,
                            keq::Union{Nothing,Real}=nothing,
                            pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
-                           anchors=nothing, variant::Symbol=:_deploy)
-    coords_syms = cha_coords(enzyme, variant)
-    lo, hi = cha_coord_bounds(enzyme, variant)
+                           anchors=nothing, variant::Symbol=:_deploy, scale::Symbol=:relative)
+    coords_syms = cha_coords(enzyme, variant; scale=scale)
+    lo, hi = cha_coord_bounds(enzyme, variant; scale=scale)
     objective = u -> _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
-                                         keq=keq, variant=variant)
+                                         keq=keq, variant=variant, scale=scale)
     best = (u=fill(NaN, length(coords_syms)), loss=Inf)
     endpoints = Vector{Float64}[]
     losses = Float64[]

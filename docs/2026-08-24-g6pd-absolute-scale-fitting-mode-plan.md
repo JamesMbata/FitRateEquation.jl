@@ -405,7 +405,7 @@ Makes `:kcat` a first-class coord in absolute mode and realizes fiber-free `C=1`
 **Interfaces:**
 - Produces: `cha_coords(enzyme, variant=:_deploy; scale::Symbol=:relative)` appends `:kcat` for `(:G6PD, :absolute)`. `cha_coord_bounds(...; scale)` gives `:kcat` bound `[1,3]` (log10). `_cha_loss_with_pins(...; scale)` and `cha_fit_candidate(...; scale)`. In absolute mode the loss pops `:kcat` from the coord dict and passes `kf=coords[:kcat]`, `release_rate=CHA_ABS_RELEASE_RATE`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `test/test_cha_absolute.jl`:
 ```julia
@@ -429,12 +429,12 @@ end
 end
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `julia --project test/test_cha_absolute.jl`
 Expected: FAIL — `cha_coords` has no `scale` kwarg.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `cha_coords`, add `scale::Symbol=:relative` and, at the end of the `:G6PD` branch, append `:kcat` when `scale === :absolute`:
 ```julia
@@ -505,12 +505,12 @@ function cha_fit_candidate(enzyme::Symbol, mech, d::Dataset; n_restarts::Int=8,
 end
 ```
 
-- [ ] **Step 4: Run tests to verify pass (incl. bit-identity)**
+- [x] **Step 4: Run tests to verify pass (incl. bit-identity)**
 
 Run: `julia --project test/test_cha_absolute.jl && julia --project test/test_byte_identity.jl && julia --project test/test_cha_fit.jl`
 Expected: PASS all (relative default path unchanged).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cha_fit.jl test/test_cha_absolute.jl

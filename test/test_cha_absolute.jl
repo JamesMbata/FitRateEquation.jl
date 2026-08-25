@@ -39,3 +39,22 @@ end
     expect = (pen + sum(x -> x^2, filter(isfinite, lr))) / FitRateEquation.nrows(d)
     @test L ≈ expect
 end
+
+@testset "cha_coords appends :kcat only for (:G6PD, :absolute)" begin
+    @test !(:kcat in cha_coords(:G6PD))
+    cs = cha_coords(:G6PD, :_deploy; scale=:absolute)
+    @test :kcat in cs
+    @test cs[end] == :kcat
+    lo, hi = ChaFit.cha_coord_bounds(:G6PD, :_deploy; scale=:absolute)
+    @test length(lo) == length(cs)
+    @test (lo[end], hi[end]) == (1.0, 3.0)   # kcat in [10, 1000] s^-1
+end
+
+@testset "fiber-free C=1: kcat == fitted kf, Km == alpha*Kd" begin
+    # At release_rate = CHA_ABS_RELEASE_RATE the apparent Km loses its fiber factor.
+    coords = Dict(:Kd_NADP=>5e-5, :Kd_G6P=>2e-4, :Kd_6PGLn=>2e-4, :alpha=>1.3,
+                  :Ki_NADPH=>2e-5, :Ki_ATP=>1.5e-3, :Ki_ATP_EG=>3e-2, :Km_NADPH_rev=>3.9e-6)
+    km = ChaFit.cha_apparent_km(:G6PD, coords, :Km_G6P;
+                                kf=178.0, release_rate=ChaFit.CHA_ABS_RELEASE_RATE)
+    @test km ≈ coords[:alpha]*coords[:Kd_G6P] rtol=1e-5   # C -> 1
+end
