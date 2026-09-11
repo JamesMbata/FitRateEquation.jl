@@ -68,11 +68,7 @@ v2_mechanism() = _wiring(:G6PD).variants[2].mech
 pin_table(variant::Symbol) = _pin_table(:G6PD, variant)
 
 # Per-enzyme (and -variant) fit-mode set. G6PD's forward constants are flux-healthy (2 modes:
-# free + literature-pinned). PGD adds a 3rd mode for the Km_PGA physiology override. HK1 H1
-# keeps all 3 (free + N-half pins + full lit pins); HK1 H4 (the data-driven {Keff, split_ratio}
-# reparameterization) is mode1-ONLY — it carries no pins by construction, so modes 2/3 would be
-# identical no-op repeats.
+# free + literature-pinned). PGD adds a 3rd mode for the Km_PGA physiology override.
 modes_for(enzyme::Symbol, variant::Symbol=:_deploy) =
     enzyme === :PGD ? (:mode1, :mode2, :mode3) :
-    enzyme === :HK1 ? (variant === :H4 ? (:mode1,) : (:mode1, :mode2, :mode3)) :
     (:mode1, :mode2)

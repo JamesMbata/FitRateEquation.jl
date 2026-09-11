@@ -17,8 +17,7 @@
 function config_for(enzyme::Symbol)
     enzyme === :G6PD ? g6pd_config() :
     enzyme === :PGD  ? pgd_config()  :
-    enzyme === :HK1  ? hk1_config()  :
-    error("config_for: unknown enzyme $enzyme (expected :G6PD, :PGD, or :HK1)")
+    error("config_for: unknown enzyme $enzyme (expected :G6PD or :PGD)")
 end
 
 "Detect the enzyme from a results path: the component directly under `fitting/`."
@@ -30,7 +29,6 @@ const _VARIANT_TO_ENZYME = Dict(
     "no_g6p_nadph_deadend" => :G6PD, "no_g6p_atp_deadend" => :G6PD,
     "no_g6p_both_deadends" => :G6PD,
     "cha_base" => :PGD, "full_re" => :PGD,
-    "H1" => :HK1, "H4" => :HK1,
 )
 
 function detect_enzyme(results_dir::AbstractString)
@@ -47,7 +45,7 @@ function detect_enzyme(results_dir::AbstractString)
     m === nothing && error("detect_enzyme: cannot determine enzyme for $results_dir " *
         "(no recognized variant in macro_constants.csv and no `fitting/<ENZYME>/` path segment)")
     enz = Symbol(m.captures[1])
-    enz in (:G6PD, :PGD, :HK1) ||
+    enz in (:G6PD, :PGD) ||
         error("detect_enzyme: unrecognized enzyme `$enz` under fitting/ in $results_dir")
     return enz
 end
@@ -105,7 +103,6 @@ function EnzymeRates.rate_equation(a::ChaAdapter, concs, params)
     ratefn = a.enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
              a.enzyme === :PGD  ? (a.variant === :full_re ? ChaLaws.cha_rate_PGD_fullRE :
                                                             ChaLaws.cha_rate_PGD) :
-             a.enzyme === :HK1  ? ChaLawsHK1.cha_rate_HK1 :
              error("ChaAdapter rate_equation: unknown enzyme $(a.enzyme)")
     keq = hasproperty(params, :Keq) ? Float64(params.Keq) : a.default_keq
     m   = _cha_adapter_tuple(a, keq)
@@ -151,7 +148,6 @@ function read_fit_corpus(run_dir::AbstractString)
     end
     hasproperty(df, :X_axis_label) || error(
         "read_fit_corpus: $f has no `X_axis_label` column, which the per-figure panel " *
-        "renderer requires (it picks each panel's swept metabolite from it). HK1 corpora " *
-        "do not carry this column and are not supported by the plotter yet.")
+        "renderer requires (it picks each panel's swept metabolite from it).")
     return df
 end

@@ -23,15 +23,6 @@ include("enzyme_wiring.jl")
 include("mechanisms.jl")
 include("enzymes/g6pd.jl")
 include("enzymes/pgd.jl")
-# HK1 stays guarded: its mechanisms use bespoke low-level EnzymeMechanism construction +
-# the allosteric DSL reworked upstream; the include is guarded so G6PD/PGD load, and HK1
-# auto-re-enables once ported.
-const HK1_AVAILABLE = try
-    include("enzymes/hk1.jl"); true
-catch err
-    @warn "FitRateEquation: HK1 wiring disabled on this EnzymeRates (deferred port)" exception=(err, catch_backtrace())
-    false
-end
 include("cv.jl")
 include("promotable.jl")
 include("macro_collect.jl")
@@ -45,7 +36,6 @@ include("worker_setup.jl")
 include("run.jl")
 include("configs/G6PD.jl")
 include("configs/PGD.jl")
-include("configs/HK1.jl")
 include("plot_support.jl")
 include("cli.jl")
 
@@ -55,7 +45,7 @@ export macro_constants
 export mode_agreement
 export fit_consensus_equation, write_outputs
 export setup_workers
-export run_g6pd, run_pgd, run_hk1
+export run_g6pd, run_pgd
 export cli_main
 
 # plot_consensus_fit stub — the real method lives in the CairoMakie package extension.

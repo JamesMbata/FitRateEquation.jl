@@ -1,12 +1,12 @@
 # In-process CLI dispatcher. No subprocess / --project / preflight — the package is
 # already loaded, so subcommands call fit_consensus_equation directly.
-const _CLI_SUBS = ("g6pd", "pgd", "hk1", "plot", "help")
+const _CLI_SUBS = ("g6pd", "pgd", "plot", "help")
 
 const CLI_USAGE = """
-FitRateEquation — consensus rate-equation fitter (G6PD / PGD / HK1)
+FitRateEquation — consensus rate-equation fitter (G6PD / PGD)
 
 Usage: fitrateequation <subcommand> [flags]
-  g6pd | pgd | hk1                Fit an enzyme (writes artifacts to --outdir)
+  g6pd | pgd                       Fit an enzyme (writes artifacts to --outdir)
   plot <run_dir>                  Render the fitted law over the corpus (needs CairoMakie)
   help                            Show this message
 Flags: --smoke  --nprocs N  --outdir DIR  --data CSV  --variant NAME
@@ -35,11 +35,11 @@ function parse_cli(argv::AbstractVector{<:AbstractString})
             i < length(argv) || error("--outdir requires a value")
             outdir = String(argv[i+1]); i += 2
         elseif tok == "--data"
-            sub in ("g6pd", "pgd", "hk1") || error("--data is only valid with an enzyme subcommand\n\n$CLI_USAGE")
+            sub in ("g6pd", "pgd") || error("--data is only valid with an enzyme subcommand\n\n$CLI_USAGE")
             i < length(argv) || error("--data requires a value")
             data = String(argv[i+1]); i += 2
         elseif tok == "--variant"
-            sub in ("g6pd", "pgd", "hk1") || error("--variant is only valid with an enzyme subcommand\n\n$CLI_USAGE")
+            sub in ("g6pd", "pgd") || error("--variant is only valid with an enzyme subcommand\n\n$CLI_USAGE")
             i < length(argv) || error("--variant requires a value")
             variant = String(argv[i+1]); i += 2
         elseif startswith(tok, "-")
@@ -60,7 +60,7 @@ function cli_main(argv::AbstractVector{<:AbstractString})
     if sub == "plot"
         plot_consensus_fit(o.rundir)
     else
-        enz = Symbol(sub)                       # :g6pd / :pgd / :hk1
+        enz = Symbol(sub)                       # :g6pd / :pgd
         variants = o.variant === nothing ? nothing : [Symbol(o.variant)]
         fit_consensus_equation(enz; smoke=o.smoke, nprocs=o.nprocs, outdir=o.outdir,
                                data_csv=o.data, variants=variants)

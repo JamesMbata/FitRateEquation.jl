@@ -3,7 +3,7 @@
 # =========================================================================================
 #
 # `setup_workers(nprocs)` centralizes the env-detect + addprocs block used by every
-# FitRateEquation runner (run_g6pd/run_pgd/run_hk1). Library-safe: nothing here runs at
+# FitRateEquation runner (run_g6pd/run_pgd). Library-safe: nothing here runs at
 # include (module-load) time — a library must not mutate the active project or spawn
 # processes just because it was `using`'d. Everything is wrapped in `setup_workers`, called
 # explicitly by the runners. Workers load the module with `@everywhere using

@@ -6,7 +6,6 @@ module Promotable
 const _PROMOTABLE = Dict{Symbol,Vector{Symbol}}(
     :G6PD => [:nadph_release],
     :PGD  => Symbol[],
-    :HK1  => Symbol[],
 )
 const _FIBER = Dict{Tuple{Symbol,Symbol},Symbol}(
     (:G6PD, :nadph_release) => :koffQ,

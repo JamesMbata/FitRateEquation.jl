@@ -116,7 +116,7 @@ Classify each cha_coord at a Cha fit optimum. Fields `(name, value, class, ci)`.
 
 `variant`/`mode` are accepted (so the Task-15 call site can pass them). `classify_cha` itself
 does NOT re-evaluate the Cha loss (it consumes the precomputed `idf`), so `variant` is inert in
-THIS function — the variant-dependent curvature (HK1 alpha per H1/H3) must be applied upstream by
+THIS function — any variant-dependent curvature must be applied upstream by
 passing the same `variant` to `cha_identifiable_functions`. `mode` likewise carries no
 Cha-coord machinery (override/conflated/product-side-literature are coeff-space-only).
 """

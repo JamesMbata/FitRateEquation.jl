@@ -68,8 +68,8 @@ end
 
 "Read the corpus CSV into the canonical fit DataFrame: one Molar column per metabolite
  symbol, plus Rate / source (Article|Fig) / Apparent_Keq, with zero, blank and non-finite
- rate rows dropped. `X_axis_label` is carried through when the corpus has it (G6PD/PGD do;
- HK1 does not) — the per-figure plot renderer needs it, the fit does not.
+ rate rows dropped. `X_axis_label` is carried through when the corpus has it — the
+ per-figure plot renderer needs it, the fit does not.
 
  This is the SINGLE corpus loader: `load_dataset` and the plotter's snapshot both come from
  it, so they cannot drift apart."
