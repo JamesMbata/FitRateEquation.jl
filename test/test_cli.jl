@@ -30,11 +30,9 @@ end
     @test o.data == "/tmp/x.csv"
 
     # --variant is valid on every enzyme subcommand, rejected elsewhere
-    @test parse_cli(["hk1", "--variant", "full_re"])[2].variant == "full_re"
     @test_throws ErrorException parse_cli(["plot", "some/dir", "--variant", "no_atp"])
 
     # --data is valid on every enzyme subcommand, rejected on plot
-    @test parse_cli(["hk1", "--data", "/tmp/h.csv"])[2].data == "/tmp/h.csv"
     @test_throws ErrorException parse_cli(["plot", "some/dir", "--data", "/tmp/x.csv"])
 
     # missing-value checks for the new flags

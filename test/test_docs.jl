@@ -10,7 +10,7 @@ using Test
     @test !occursin("run from the repo root", agents)   # repo-root rule removed
 
     # Unified entry point: fit_consensus_equation(:enzyme; …) is THE documented entry;
-    # run_g6pd/run_pgd/run_hk1 survive only as thin aliases (Task 8 of the refactor).
+    # run_g6pd/run_pgd survive only as thin aliases (Task 8 of the refactor).
     @test occursin("fit_consensus_equation", readme)
     @test occursin("fit_consensus_equation", agents)
 
@@ -21,12 +21,11 @@ using Test
     @test !occursin("run_g6pd_noatp", readme)
     @test !occursin("run_pgd_fullre", readme)
 
-    # Config builders (g6pd_config/pgd_config/hk1_config) are UN-EXPORTED internals; the
+    # Config builders (g6pd_config/pgd_config) are UN-EXPORTED internals; the
     # own-data path is fit_consensus_equation(:enzyme; data_csv=…). They must not appear
     # anywhere in the human user guide as an API the reader is told to call.
     @test !occursin("g6pd_config", readme)
     @test !occursin("pgd_config", readme)
-    @test !occursin("hk1_config", readme)
 
     # Own-data contract: data_csv= entry + canonical (non-remappable) column schema.
     @test occursin("data_csv", readme)

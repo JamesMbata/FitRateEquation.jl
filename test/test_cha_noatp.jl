@@ -138,7 +138,7 @@ end
     @test all(df2.ATP .<= 0.0)
     @test df2.Rate == [1.0, 1.2]
 
-    # A corpus with no ATP column at all passes through untouched (HK1-shaped input).
+    # A corpus with no ATP column at all passes through untouched.
     df_noatp = select(df, Not(:ATP))
     @test FitRateEquation.drop_atp_rows(df_noatp) === df_noatp
 end

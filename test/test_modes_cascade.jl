@@ -69,9 +69,8 @@ end
         @test !haskey(rp(:G6PD, variant, :mode2; anchor_reverse=false), :Km_NADPH_rev)
     end
 
-    # PGD/HK1 have no always-on reverse anchor, so the flag is a no-op for them.
+    # PGD has no always-on reverse anchor, so the flag is a no-op for it.
     pairs = [(:PGD, :cha_base, :mode1), (:PGD, :cha_base, :mode2)]
-    FitRateEquation.HK1_AVAILABLE && append!(pairs, [(:HK1, :H1, :mode2), (:HK1, :H1, :mode3)])
     for (enz, variant, mode) in pairs
         @test rp(enz, variant, mode; anchor_reverse=false) == rp(enz, variant, mode)
     end
@@ -93,9 +92,8 @@ end
     @test dar(:G6PD, [:no_g6p_atp_deadend, :SS_NADPH_release_rate_eq]) == true
     # Empty variant list: conservative true.
     @test dar(:G6PD, Symbol[]) == true
-    # PGD/HK1 have no anchor-optional variants at all: always true.
+    # PGD has no anchor-optional variants at all: always true.
     @test dar(:PGD, [:cha_base]) == true
-    @test dar(:HK1, [:H1]) == true
 end
 
 @testset "_requires_reverse_anchor: NOT DEPLOYABLE banner scope matches the default's scope" begin

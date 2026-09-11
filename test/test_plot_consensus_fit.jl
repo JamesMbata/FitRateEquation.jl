@@ -15,7 +15,6 @@ using FitRateEquation: g6pd_config
     @testset "detect_enzyme" begin
         @test FitRateEquation.detect_enzyme("fitting/G6PD/rate_eq/consensus_macro/results/2026-06-11_full") == :G6PD
         @test FitRateEquation.detect_enzyme("/abs/PPP_Experiments/fitting/PGD/rate_eq/consensus_macro/results/2026-06-15") == :PGD
-        @test FitRateEquation.detect_enzyme("fitting/HK1/rate_eq/consensus_macro/results/2026-06-13") == :HK1
         @test_throws ErrorException FitRateEquation.detect_enzyme("some/unrelated/path")
     end
 
@@ -161,16 +160,6 @@ end
     @test err isa ErrorException
     @test occursin("fit_corpus.csv", err.msg)
     @test occursin("0.2.0", err.msg)
-
-    # A snapshot with no X_axis_label (HK1-shaped): errors at PLOT time, naming the column.
-    hk1_dir = mktempdir()
-    CSV.write(joinpath(hk1_dir, "fit_corpus.csv"),
-              DataFrame(Glucose = [1e-3], ATP = [1e-3], G6P = [0.0], ADP = [0.0],
-                        Pi = [0.0], Rate = [1.0], source = ["Choe|1"],
-                        Apparent_Keq = [2700.0]))
-    err2 = try; FitRateEquation.read_fit_corpus(hk1_dir); nothing; catch e; e; end
-    @test err2 isa ErrorException
-    @test occursin("X_axis_label", err2.msg)
 end
 
 @testset "read_fit_corpus validates every renderer column" begin
