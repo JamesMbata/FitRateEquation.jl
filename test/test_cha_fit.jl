@@ -348,3 +348,36 @@ end
     @test pen_fr < 1e-12
     @test pen_dp > 1e-8
 end
+
+@testset "shared loss core: centered wrapper is BITWISE the canonical fold order" begin
+    # The centered wrapper must reduce the shared core's log-ratios in EXACTLY the canonical
+    # fold order (penalty first, then each group's variance in `groups` order) — float addition
+    # is non-associative, so this is the fold-order regression guard. Both sides are computed in
+    # THIS process, so the check is bitwise (==) yet environment-independent (unlike a hardcoded
+    # literal, which drifts by ULPs across BLAS/thread environments — see test_byte_identity.jl,
+    # which for that reason compares structure, not values).
+    d = load_dataset(g6pd_config()); keq = median(d.keq)
+    m = FitRateEquation.v2_mechanism()
+    coords = Dict(s => getfield(cha_macro_readoffs_G6PD(m, -3 .+ 2 .* rand(length(free_params(m))); keq=keq), s)
+                  for s in cha_coords(:G6PD))
+    L = ChaFit.cha_centered_logratio_loss(:G6PD, m, d, coords; keq=keq)
+    lr = fill(NaN, FitRateEquation.nrows(d))
+    pen, groups = ChaFit._cha_row_logratios!(lr, :G6PD, m, d, coords; keq=keq)
+    total = pen
+    for idx in groups
+        vals = filter(isfinite, lr[idx])
+        isempty(vals) && continue
+        μ = sum(vals)/length(vals)
+        total += sum(x -> (x-μ)^2, vals)
+    end
+    @test L == total / FitRateEquation.nrows(d)   # bitwise: same ops, same order, same env
+end
+
+@testset "resolve_cha_pins merges explicit extra pins (guarded)" begin
+    p = ChaFit.resolve_cha_pins(:G6PD, :_deploy, :mode1;
+            extra=Dict(:Kd_6PGLn=>log10(2.1e-4)), scale=:absolute)
+    @test p[:Kd_6PGLn] == log10(2.1e-4)
+    # bogus coord errors
+    @test_throws ErrorException ChaFit.resolve_cha_pins(:G6PD, :_deploy, :mode1;
+            extra=Dict(:NotACoord=>0.0), scale=:absolute)
+end

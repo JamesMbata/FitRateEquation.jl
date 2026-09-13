@@ -55,6 +55,7 @@ function plot_fit_on_data(
     num_col::Int = 5,
     scaler = 4.0,
     absolute_rates::Bool = false,
+    abs_kcat::Real = 1.0,
 )
     # Scalar Keq: one params NamedTuple for every point. Symbol Keq: build params
     # per point/series from the named per-row column. `_params_for` centralizes
@@ -153,12 +154,21 @@ function plot_fit_on_data(
             # reuses the single params NamedTuple).
             series_params = keq_is_col ? _params_for(series_data[1, Keq]) : params_full
 
+            # Absolute mode: the adapter's rate is on the unit gauge (kf=Et=1), so scale the
+            # prediction by kcat and this series' enzyme concentration Et (M, from fit_corpus)
+            # to land in absolute units. Et is constant within a series; NaN falls back to 1.
+            abs_scale = 1.0
+            if absolute_rates
+                et_s = hasproperty(series_data, :Et) ? series_data[1, :Et] : NaN
+                abs_scale = abs_kcat * (isnan(et_s) ? 1.0 : et_s)
+            end
+
             # Build prediction function for line plot
             function predict(x)
                 concs = NamedTuple{MetNames}(Tuple(
                     m == x_axis_metabolite ? x : combo_row[m] for m in MetNames
                 ))
-                EnzymeRates.rate_equation(mechanism, concs, series_params) / fig_vmax
+                EnzymeRates.rate_equation(mechanism, concs, series_params) * abs_scale / fig_vmax
             end
 
             # Legend label from changing metabolite concentrations
@@ -235,8 +245,13 @@ function FitRateEquation.plot_consensus_fit(run_dir::AbstractString)
 
     enzyme = FitRateEquation.detect_enzyme(run_dir)
     cfg    = FitRateEquation.config_for(enzyme)
+    # Absolute-mode runs record scale in provenance.toml; render raw predicted-vs-measured
+    # rates (no per-figure Vmax recentering) so the absolute scale is visible in the panels.
+    prov_file = joinpath(run_dir, "provenance.toml")
+    is_absolute = isfile(prov_file) && occursin(r"scale\s*=\s*\"absolute\"", read(prov_file, String))
     println("Results dir: $run_dir")
     println("Enzyme: $enzyme")
+    is_absolute && println("Scale: absolute (raw predicted-vs-measured rates)")
 
     # The rows this run ACTUALLY fit — not a re-derivation from `cfg`, which cannot see a
     # custom data_csv or row_filter. Errors for a corpus with no X_axis_label and for pre-0.2.0
@@ -258,8 +273,16 @@ function FitRateEquation.plot_consensus_fit(run_dir::AbstractString)
         try
             coords  = FitRateEquation.read_coords(mc, enzyme, variant, mode)
             adapter = FitRateEquation.build_cha_adapter(enzyme, coords, variant, cfg.deploy_keq)
+            # Absolute runs: read the fitted kcat for this cell (a macro_constants row) so the
+            # panel overlays absolute predicted rates (kcat·Et·f) on the measured absolute data.
+            abs_kcat = 1.0
+            if is_absolute
+                kr = mc[(mc.variant .== variant_s) .& (mc.mode .== mode_s) .& (mc.name .== "kcat"), :]
+                nrow(kr) == 1 && (abs_kcat = Float64(kr.value[1]))
+            end
             fig = plot_fit_on_data(adapter, (;), df, :Apparent_Keq;
-                                   enzyme_name = cfg.name, absolute_rates = false)
+                                   enzyme_name = cfg.name, absolute_rates = is_absolute,
+                                   abs_kcat = abs_kcat)
             save(out_png, fig, px_per_unit = 4)
             println("  saved: $out_png")
         catch e

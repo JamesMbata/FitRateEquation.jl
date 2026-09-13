@@ -73,14 +73,20 @@ function cha_identifiable_functions(enzyme::Symbol, mech, d::Dataset, coords_dic
                                     release_rate::Union{Nothing,Real}=nothing,
                                     release_eq::Union{Nothing,Real}=nothing,
                                     kr::Union{Nothing,Real}=nothing, tol::Real=2e-2,
-                                    variant::Symbol=:_deploy)
-    coord_syms = cha_coords(enzyme, variant)
+                                    variant::Symbol=:_deploy, scale::Symbol=:relative)
+    coord_syms = cha_coords(enzyme, variant; scale=scale)
     x = [log10(coords_dict[s]) for s in coord_syms]
     idx = _cha_unpinned_idx(coord_syms, pins)
     f = xv -> begin
         cd = Dict(coord_syms[k] => 10.0^xv[k] for k in eachindex(coord_syms))
-        _cha_loss(enzyme, mech, d, cd; keq=keq,
-                  release_rate=release_rate, release_eq=release_eq, kr=kr, variant=variant)
+        if scale === :absolute
+            # Curvature over the ABSOLUTE loss (pops :kcat -> kf at the fiber-free rate), so
+            # :kcat is a genuine free direction of the Hessian, not the centered-loss gauge.
+            ChaFit.cha_score_loss(enzyme, mech, d, cd; keq=keq, variant=variant, scale=scale)
+        else
+            _cha_loss(enzyme, mech, d, cd; keq=keq,
+                      release_rate=release_rate, release_eq=release_eq, kr=kr, variant=variant)
+        end
     end
     H = _cha_fd_hessian(f, collect(float.(x)), idx)
     F = eigen(Symmetric(H))
@@ -124,8 +130,9 @@ function classify_cha(enzyme::Symbol, mech, d::Dataset, coords_dict, pins, idf;
                       keq::Real=median(d.keq), sigma2::Real=1.0, variant=:_deploy, mode=nothing,
                       stiff_frac::Real=0.8, ci_rel_tol::Real=1.0,
                       release_rate::Union{Nothing,Real}=nothing,
-                      release_eq::Union{Nothing,Real}=nothing, kr::Union{Nothing,Real}=nothing)
-    coord_syms = cha_coords(enzyme, variant)
+                      release_eq::Union{Nothing,Real}=nothing, kr::Union{Nothing,Real}=nothing,
+                      scale::Symbol=:relative)
+    coord_syms = cha_coords(enzyme, variant; scale=scale)
     idx   = idf.idx
     stiff = idf.eigvecs[:, 1:idf.rank]
     # Calibrated pseudo-inverse covariance on the UNPINNED coords (same form as classify_coords).

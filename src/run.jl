@@ -84,15 +84,17 @@ end
 function _fit_and_cv(variant::Symbol, mech, d::Dataset;
                      mode::Symbol=:mode2, n_restarts::Int=8, maxiter::Int=1_000_000,
                      maxtime::Real=20.0, seed::Int=1, enzyme::Symbol=_enzyme_of(mech),
-                     anchor_reverse::Bool=true)
+                     anchor_reverse::Bool=true, scale::Symbol=:relative,
+                     extra_pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
     keq     = nothing
-    pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse)
+    pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
+                                      extra=extra_pins, scale=scale)
     anchors = cha_anchors(enzyme, mode)
     fit = ChaFit.cha_fit_candidate(enzyme, mech, d; n_restarts=n_restarts, maxiter=maxiter,
                                    maxtime=maxtime, seed=seed, keq=keq, pins=pins,
-                                   anchors=anchors, variant=variant)
+                                   anchors=anchors, variant=variant, scale=scale)
     cv  = _cha_loocv(enzyme, mech, d; n_restarts=n_restarts, maxiter=maxiter, maxtime=maxtime,
-                     seed=seed, keq=keq, pins=pins, anchors=anchors, variant=variant)
+                     seed=seed, keq=keq, pins=pins, anchors=anchors, variant=variant, scale=scale)
     (variant=variant, mode=mode, mech=mech, pins=pins, anchors=anchors, fit=fit, cv=cv)
 end
 
@@ -101,15 +103,18 @@ end
 # article with cha_centered_logratio_loss at the train-fit coords.
 function _cha_loocv(enzyme::Symbol, mech, d::Dataset; n_restarts::Int,
                     maxiter::Int, maxtime::Real, seed::Int, keq::Union{Nothing,Real},
-                    pins::Dict{Symbol,Float64}, anchors, variant::Symbol=:_deploy)
+                    pins::Dict{Symbol,Float64}, anchors, variant::Symbol=:_deploy,
+                    scale::Symbol=:relative)
     per = NamedTuple[]
-    for fold in _article_folds(d)
+    folds0 = scale === :absolute ? _group_folds(d) : _article_folds(d)
+    folds  = [f for f in folds0 if !isempty(f.train) && !isempty(f.test)]
+    for fold in folds
         dtr = _subset(d, fold.train); dte = _subset(d, fold.test)
         fit = ChaFit.cha_fit_candidate(enzyme, mech, dtr; n_restarts=n_restarts, maxiter=maxiter,
                                        maxtime=maxtime, seed=seed, keq=keq, pins=pins,
-                                       anchors=anchors, variant=variant)
+                                       anchors=anchors, variant=variant, scale=scale)
         push!(per, (article=fold.article,
-                    loss=ChaFit.cha_centered_logratio_loss(enzyme, mech, dte, fit.coords; keq=keq, variant=variant)))
+                    loss=ChaFit.cha_score_loss(enzyme, mech, dte, fit.coords; keq=keq, variant=variant, scale=scale)))
     end
     losses = getfield.(per, :loss)
     (per_article=per,
@@ -180,12 +185,19 @@ end
 # function of cell identity (`seed + ci`) — exactly the `_fit_and_cv` scheme, where the main
 # fit and every fold of a cell share that one seed — so it is independent of worker count and
 # dispatch order.
-function _build_tasks(cells, d::Dataset; seed::Int=1, enzyme::Symbol=:G6PD, anchor_reverse::Bool=true)
-    folds = _article_folds(d)
+function _build_tasks(cells, d::Dataset; seed::Int=1, enzyme::Symbol=:G6PD, anchor_reverse::Bool=true,
+                      scale::Symbol=:relative, extra_pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
+    # Absolute mode folds by Fig group (single-article corpus makes leave-one-article-out
+    # degenerate); drop any degenerate fold (empty train/test) so no fit runs on empty data.
+    # Relative mode uses _article_folds, which already excludes degenerate folds — the filter is
+    # a no-op there, so the task list is byte-identical.
+    folds0 = scale === :absolute ? _group_folds(d) : _article_folds(d)
+    folds  = [f for f in folds0 if !isempty(f.train) && !isempty(f.test)]
     allrows = collect(1:nrows(d))
     tasks = NamedTuple[]
     for (ci, (variant, mech, mode)) in enumerate(cells)
-        pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse)
+        pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
+                                          extra=extra_pins, scale=scale)
         anchors = cha_anchors(enzyme, mode)
         s = seed + ci
         push!(tasks, (ci=ci, variant=variant, mode=mode, kind=:main, article="",
@@ -205,18 +217,19 @@ end
 # article with `cha_centered_logratio_loss` at the train-fit coords — identical semantics to
 # `_cha_loocv` (macro-coord space).
 function _run_fit_task(t, d::Dataset, mechs; n_restarts::Int, maxiter::Int, maxtime::Real,
-                       enzyme::Symbol=:G6PD)
+                       enzyme::Symbol=:G6PD, scale::Symbol=:relative)
     mech = mechs[t.variant]
     dtr  = _subset(d, t.train_idx)
     keq  = nothing
     fit  = ChaFit.cha_fit_candidate(enzyme, mech, dtr; n_restarts=n_restarts, maxiter=maxiter,
                                     maxtime=maxtime, seed=t.seed, keq=keq, pins=t.pins,
-                                    anchors=t.anchors, variant=t.variant)
+                                    anchors=t.anchors, variant=t.variant, scale=scale)
     if t.kind === :main
         (ci=t.ci, kind=:main, fit=fit)
     else
         (ci=t.ci, kind=:fold, article=t.article,
-         loss=ChaFit.cha_centered_logratio_loss(enzyme, mech, _subset(d, t.test_idx), fit.coords; keq=keq, variant=t.variant))
+         loss=ChaFit.cha_score_loss(enzyme, mech, _subset(d, t.test_idx), fit.coords;
+                                    keq=keq, variant=t.variant, scale=scale))
     end
 end
 
@@ -225,11 +238,13 @@ end
 # isempty NaN/0.0 guards), then run the cheap macro-coord identifiability + classification
 # serially. Cells are emitted in `ci` order so `write_outputs` is untouched.
 function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbol=:G6PD,
-                       anchor_reverse::Bool=true)
+                       anchor_reverse::Bool=true, scale::Symbol=:relative,
+                       extra_pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
     keq = median(d.keq)
     results = NamedTuple[]
     for (ci, (variant, mech, mode)) in enumerate(cells)
-        pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse)
+        pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
+                                          extra=extra_pins, scale=scale)
         anchors = cha_anchors(enzyme, mode)
         mres = raw[findfirst(x -> x.ci == ci && x.kind === :main, raw)]
         fit  = mres.fit
@@ -241,11 +256,13 @@ function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbo
               se      = isempty(losses) ? 0.0 : std(losses)/sqrt(length(losses)))
         r = (variant=variant, mode=mode, mech=mech, pins=pins, anchors=anchors, fit=fit, cv=cv)
         idf = ChaClassify.cha_identifiable_functions(enzyme, mech, d, r.fit.coords;
-                    keq=nothing, pins=pins, variant=variant)
+                    keq=nothing, pins=pins, variant=variant,
+                    scale=scale)
         # Residual variance σ̂² = in-sample loss / dof, for the calibrated macro-constant CIs.
         sigma2 = r.fit.loss / max(nrows(d) - idf.rank, 1)
         classed = ChaClassify.classify_cha(enzyme, mech, d, r.fit.coords, pins, idf;
-                                            keq=keq, sigma2=sigma2, variant=variant, mode=mode)
+                                            keq=keq, sigma2=sigma2, variant=variant, mode=mode,
+                                            scale=scale)
         push!(results, (variant=variant, mode=mode, r=r, idf=idf, classed=classed))
     end
     results
@@ -272,31 +289,41 @@ function _fit_consensus(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter:
                  maxtime::Real=20.0, seed::Int=1,
                  variants::Vector{Symbol}=run_variants(Symbol(cfg.name)),
                  row_filter=identity,
-                 anchor_reverse::Bool=_default_anchor_reverse(Symbol(cfg.name), variants))
+                 anchor_reverse::Bool=_default_anchor_reverse(Symbol(cfg.name), variants),
+                 scale::Symbol=:relative,
+                 pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
     enzyme = Symbol(cfg.name)
     # Load once, filter as a DataFrame, then build the Dataset from exactly those rows —
     # so `corpus` IS the fitted corpus and can be snapshotted verbatim to fit_corpus.csv.
     corpus = row_filter(read_corpus(cfg))
     d      = dataset_from_corpus(corpus, cfg)
+    # Absolute scale needs a per-row enzyme concentration (the [G6PD] (nM) column) — a hard
+    # error naming the column, not a silent unit-gauge fallback.
+    if scale === :absolute
+        (hasproperty(cfg, :enzyme_conc_col) && any(isfinite, d.Et)) ||
+            error("absolute scale requires a \"$(hasproperty(cfg, :enzyme_conc_col) ? cfg.enzyme_conc_col : "[G6PD] (nM)")\" " *
+                  "column with finite values; none found in $(cfg.data_csv).")
+    end
     deploy_keq = cfg.deploy_keq
     mkpath(outdir)
     cells = _cells(enzyme; variants=variants)
     mechs = Dict(v => _mech_for(enzyme, v) for v in variants)
 
-    tasks = _build_tasks(cells, d; seed=seed, enzyme=enzyme, anchor_reverse=anchor_reverse)
+    tasks = _build_tasks(cells, d; seed=seed, enzyme=enzyme, anchor_reverse=anchor_reverse,
+                         scale=scale, extra_pins=pins)
     pool  = CachingPool(workers())
     raw   = pmap(pool, tasks) do t           # captures d, mechs, enzyme (cached per worker)
         _run_fit_task(t, d, mechs; n_restarts=n_restarts, maxiter=maxiter, maxtime=maxtime,
-                      enzyme=enzyme)
+                      enzyme=enzyme, scale=scale)
     end
 
     results = _reduce_cells(raw, cells, d, mechs; seed=seed, enzyme=enzyme,
-                            anchor_reverse=anchor_reverse)
+                            anchor_reverse=anchor_reverse, scale=scale, extra_pins=pins)
     meta = (n_restarts=n_restarts, maxiter=maxiter, maxtime=maxtime, seed=seed,
-            n_rows=nrows(d), anchor_reverse=anchor_reverse, variants=variants)
+            n_rows=nrows(d), anchor_reverse=anchor_reverse, variants=variants, scale=scale)
     write_outputs(outdir, d, results; meta=meta, name=String(cfg.name), enzyme=enzyme,
                  deploy_keq=deploy_keq, anchor_reverse=anchor_reverse,
-                 corpus=corpus, data_csv=cfg.data_csv)
+                 corpus=corpus, data_csv=cfg.data_csv, scale=scale)
     results
 end
 
@@ -313,8 +340,12 @@ results. `n_restarts`/`maxiter`/`maxtime` override the smoke→budget mapping wh
 """
 function fit_consensus_equation(enzyme::Symbol; variants=nothing, data_csv=nothing,
         smoke::Bool=false, outdir=nothing, nprocs=nothing, anchor_reverse=nothing,
-        n_restarts=nothing, maxiter=nothing, maxtime=nothing, seed::Int=1)
+        n_restarts=nothing, maxiter=nothing, maxtime=nothing, seed::Int=1,
+        scale::Symbol=:relative, pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
     enz = _canonical_enzyme(enzyme)
+    # Absolute scale is wired for G6PD only (PGD stays relative-only); no silent fallback.
+    scale === :absolute && enz !== :G6PD &&
+        error("absolute scale is not yet wired for $enz (G6PD only).")
     vars = variants === nothing ? run_variants(enz) : Vector{Symbol}(variants)
     ar   = anchor_reverse === nothing ? _default_anchor_reverse(enz, vars) : anchor_reverse
     cfg  = _enzyme_config(enz, data_csv)
@@ -328,7 +359,7 @@ function fit_consensus_equation(enzyme::Symbol; variants=nothing, data_csv=nothi
     setup_workers(nprocs)
     @info "FitRateEquation run starting" enzyme=enz nworkers=nworkers() smoke outdir=od anchor_reverse=ar variants=vars
     _fit_consensus(cfg; outdir=od, n_restarts=nr, maxiter=mi, maxtime=mt, seed=seed,
-                   variants=vars, row_filter=rf, anchor_reverse=ar)
+                   variants=vars, row_filter=rf, anchor_reverse=ar, scale=scale, pins=pins)
 end
 
 # Short git SHA of the repo containing `dir`, or "unknown" off a checkout that has no
@@ -387,6 +418,10 @@ function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=noth
             println(io, "anchor_reverse  = $(meta.anchor_reverse)")
         hasproperty(meta, :variants) &&
             println(io, "variants        = $(collect(String.(meta.variants)))")
+        # Records the fit scale so an absolute-mode run dir is self-describing (the plotter
+        # reads this back to choose absolute predicted-vs-measured rendering).
+        hasproperty(meta, :scale) &&
+            println(io, "scale           = \"$(meta.scale)\"")
         println(io, "smoke           = $(meta.maxiter <= 150)")
     end
 end
@@ -419,11 +454,17 @@ end
 # so a view-returning `row_filter` must reach both or neither. Keyword annotations ASSERT, they
 # do not `convert`, so narrowing this back to `DataFrame` would let a view pass the fit and then
 # TypeError here, after the whole run.
+# Report verdict for the absolute-mode turnover: the SA-derived ~178 s⁻¹ sits in a 150–250 s⁻¹
+# literature band. This is a validation CHECK, never a clamp — a fit outside the band is stated.
+_kcat_verdict(kcat::Real) = (150.0 <= kcat <= 250.0) ? "in-band (150–250 s⁻¹)" :
+                                                       "OUT OF BAND (expected 150–250 s⁻¹)"
+
 function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G6PD",
                        enzyme::Symbol=:G6PD, deploy_keq::Real=median(d.keq),
                        anchor_reverse::Bool=true,
                        corpus::Union{Nothing,AbstractDataFrame}=nothing,
-                       data_csv::Union{Nothing,AbstractString}=nothing)
+                       data_csv::Union{Nothing,AbstractString}=nothing,
+                       scale::Symbol=:relative)
     corpus === nothing && error("""
         write_outputs requires `corpus=` — without it no fit_corpus.csv is written, and the
         resulting run dir cannot be plotted: a custom `data_csv` or `row_filter` is not
@@ -516,13 +557,22 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
                             "count, just an undetermined value). This variant's `micro_parameters.jl` ",
                             "block is **not deployable**. Compare fit quality only.\n")
             end
-            println(io, "CV (leave-one-article-out): $(res.r.cv.mean_cv) ± $(res.r.cv.se)\n")
+            cvlabel = scale === :absolute ? "leave-one-group-out (by Fig)" : "leave-one-article-out"
+            println(io, "CV ($cvlabel): $(res.r.cv.mean_cv) ± $(res.r.cv.se)\n")
             println(io, "| macro | value | class | ci |\n|---|---|---|---|")
             for m in res.classed
                 println(io, "| $(m.name) | $(m.value) | $(m.class) | $(m.ci) |")
             end
             for m in _apparent_km_rows(enzyme, res.r.fit.coords)
                 println(io, "| $(m.name) | $(m.value) | $(m.class) | $(m.ci) |")
+            end
+            # Absolute-mode turnover verdict: the fitted kcat against the 150–250 s⁻¹ band. A
+            # report-time CHECK, never a clamp — an out-of-band fit is stated, not hidden.
+            if scale === :absolute
+                kj = findfirst(c -> c.name === :kcat, res.classed)
+                kj === nothing || println(io, "\n**kcat** = ",
+                    round(res.classed[kj].value; sigdigits=4), " s⁻¹ — ",
+                    _kcat_verdict(res.classed[kj].value), " (`", res.classed[kj].class, "`)\n")
             end
             println(io)
         end

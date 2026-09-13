@@ -65,4 +65,10 @@ using Test
     # metabolite columns in sorted order, so a consumer reading it positionally breaks
     # silently. Same rule as the contract break above — artifact changes must be documented.
     @test occursin("sorted alphabetically", agents)
+
+    # Absolute-scale mode (G6PD): the dedicated section, the explicit pins override, and the
+    # required per-row enzyme-concentration column must all be documented in the user guide.
+    @test occursin("Absolute-scale", readme)
+    @test occursin("pins", readme)
+    @test occursin("[G6PD] (nM)", readme)
 end

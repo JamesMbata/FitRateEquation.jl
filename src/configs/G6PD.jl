@@ -21,5 +21,7 @@ function g6pd_config(; data_csv = joinpath(pkgdir(FitRateEquation), "data", "G6P
             :PGLn  => ("[PGLn] (uM)",  :uM),
             :ATP   => ("[ATP] (uM)",   :uM),
         ),
+        enzyme_conc_col  = "[G6PD] (nM)",  # OPTIONAL per-row enzyme concentration column
+        enzyme_conc_unit = :nM,            # -> M on import (÷1e9); absolute-scale mode requires it
     )
 end

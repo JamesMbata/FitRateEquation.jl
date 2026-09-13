@@ -1,0 +1,5 @@
+[NADP] (uM),[G6P] (uM),[NADPH] (uM),[PGLn] (uM),[ATP] (uM),Rate_V,Specific_Activity,Article,Fig,X_axis_label,Experiment_date,pH,Temperature,Apparent_Keq,[G6PD] (nM)
+50,200,0,0,0,1.0e-6,1,Mbata2026,1a,NADP,26-09-01,7.6,25,13.655,5.0
+100,200,0,0,0,1.5e-6,1,Mbata2026,1a,NADP,26-09-01,7.6,25,13.655,5.0
+200,200,0,0,0,1.8e-6,1,Mbata2026,1a,NADP,26-09-01,7.6,25,13.655,5.0
+400,200,0,0,0,2.0e-6,1,Mbata2026,1a,NADP,26-09-01,7.6,25,13.655,5.0

@@ -13,7 +13,12 @@ struct Dataset{T<:NamedTuple}
     rate::Vector{Float64}      # measured rate (arbitrary per-figure units)
     group::Vector{String}      # (Article, Fig) group key per row
     keq::Vector{Float64}       # per-row apparent Keq
+    Et::Vector{Float64}        # per-row enzyme concentration (M); NaN where absent (absolute mode)
 end
+# Back-compat: existing 4-arg positional callers (tests, direct constructions) get NaN Et.
+# NaN Et is the "scale not carried" sentinel — the absolute loss treats it as the unit gauge
+# (Et -> 1.0), so relative-mode paths that never touch Et are bit-for-bit unchanged.
+Dataset(concs, rate, group, keq) = Dataset(concs, rate, group, keq, fill(NaN, length(rate)))
 nrows(d::Dataset) = length(d.rate)
 
 # Coerce a CSV cell to Float64; missing/blank/non-numeric -> `default`.
@@ -92,6 +97,17 @@ function read_corpus(cfg)
     df.source       = string.(raw[!, cfg.article_col], "|", raw[!, cfg.fig_col])
     df.Apparent_Keq = _to_float.(raw[!, cfg.keq_col], NaN)
     hasproperty(raw, :X_axis_label) && (df.X_axis_label = string.(raw[!, "X_axis_label"]))
+    # Per-row enzyme concentration (M), read opportunistically from an OPTIONAL enzyme-conc
+    # column (e.g. G6PD's "[G6PD] (nM)"). Absent => NaN (the absolute loss reads NaN as the
+    # unit gauge, so this is inert for relative mode / corpora without the column). Assigned
+    # BEFORE filter! so the row drop applies to Et in lockstep with rate/conc/group/keq.
+    if hasproperty(cfg, :enzyme_conc_col) && cfg.enzyme_conc_col in names(raw)
+        ev = _to_float.(raw[!, cfg.enzyme_conc_col], NaN)
+        df.Et = cfg.enzyme_conc_unit === :nM ? ev ./ 1e9 :
+                cfg.enzyme_conc_unit === :uM ? ev ./ 1e6 : ev
+    else
+        df.Et = fill(NaN, nrow(raw))
+    end
     filter!(r -> isfinite(r.Rate) && r.Rate != 0.0, df)   # same drop as load_dataset
     return df
 end
@@ -104,6 +120,7 @@ function dataset_from_corpus(df::AbstractDataFrame, cfg)
     metsyms = metabolite_syms(cfg)
     T = NamedTuple{Tuple(metsyms), NTuple{length(metsyms),Float64}}
     concs = T[T(Tuple(Float64(row[s]) for s in metsyms)) for row in eachrow(df)]
+    et = hasproperty(df, :Et) ? Vector{Float64}(df.Et) : fill(NaN, nrow(df))
     Dataset(concs, Vector{Float64}(df.Rate), Vector{String}(df.source),
-            Vector{Float64}(df.Apparent_Keq))
+            Vector{Float64}(df.Apparent_Keq), et)
 end
