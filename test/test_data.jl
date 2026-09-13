@@ -1,5 +1,5 @@
 using FitRateEquation
-using FitRateEquation: g6pd_config, pgd_config, hk1_config
+using FitRateEquation: g6pd_config, pgd_config
 using EnzymeRates
 using CSV
 using DataFrames
@@ -51,7 +51,7 @@ end
     # "read_corpus drop predicate (fixture corpus)" testset below. Not test_byte_identity.jl:
     # that compares only variant/mode/name, never value/class/ci, so it does not gate
     # loaded values at all.)
-    for c in (g6pd_config(), pgd_config(), hk1_config())
+    for c in (g6pd_config(), pgd_config())
         ref = load_dataset(c)
         got = FitRateEquation.dataset_from_corpus(FitRateEquation.read_corpus(c), c)
         @test nrows(got) == nrows(ref)
@@ -63,15 +63,12 @@ end
         @test isconcretetype(eltype(got.concs))
     end
 
-    # HK1's corpus has no X_axis_label; read_corpus must not invent one.
-    @test !(:X_axis_label in propertynames(FitRateEquation.read_corpus(hk1_config())))
-
     # read_corpus uses load_dataset's `_to_float(x, 0.0)` for concentration cells. The
     # deleted build_plot_df used NaN-then-zero, which differs ONLY for a literal NaN cell.
     # Verified 2026-08-07: no bundled corpus contains one, so the unification is a no-op on
     # real data. This pins that -- if a future corpus introduces a NaN concentration cell,
     # this fires instead of the plot data silently changing.
-    for c in (g6pd_config(), pgd_config(), hk1_config())
+    for c in (g6pd_config(), pgd_config())
         raw = CSV.read(c.data_csv, DataFrame)
         for (s, (col, unit)) in c.metabolites
             @test !any(x -> x isa Real && isnan(x), raw[!, col])

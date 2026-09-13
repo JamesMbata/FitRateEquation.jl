@@ -274,7 +274,6 @@ end
         kcat = 1.0 * r / (1.0 + r)
         @test isapprox(km * s, kcat; rtol = 1e-12)
     end
-    @test_throws ErrorException cha_specificity(:HK1, coords, :Km_Glc)
 end
 
 @testset "anchor penalty reads the DEPLOY fiber (so the deployed Km lands on target)" begin

@@ -58,29 +58,9 @@ export cha_deploy_micro
 # release_rate / release_eq.
 function _deploy_micro_map(enzyme::Symbol, coords::AbstractDict; release_rate::Real,
                            release_eq::Real, mech=nothing, variant::Symbol = :_deploy)
-    if enzyme === :HK1
-        # free_params role order (Task 0): [k2f, Kd_Glc, Kd_ATP, Ki_G6P_C, Ki_ADP, K_Pi_N, Ki_G6P_N].
-        # k1f is the gauge (dropped from free_params); k2f is hard-gauged to 1.0 (Pi competitor-only).
-        fp = free_params(mech)
-        @assert length(fp) == 7 "HK1 deploy expects 7 free params (k1f gauge-dropped), got $(length(fp)): $fp"
-        @assert fp[1] === :k2f "HK1 free_params[1] must be :k2f, got $(fp[1])"
-        # H4 carries the reparameterized G6P coords {Keff, split_ratio}; back-map to {Kc, Kn}
-        # (identical to cha_macro_tuple's H4 branch) so H4 deploys the same micro block as H1.
-        if haskey(coords, :Keff)
-            Keff = coords[:Keff]; ratio = coords[:split_ratio]
-            sqrtP = Keff * ratio; P = sqrtP^2; sumK = P / Keff
-            sq = sqrt(max(sumK^2 - 4P, 0.0))
-            KiC = (sumK + sq) / 2; KiN = (sumK - sq) / 2
-        else
-            KiC = coords[:Ki_G6P_C]; KiN = coords[:Ki_G6P_N]
-        end
-        vals = (1.0, coords[:Kd_Glc], coords[:Kd_ATP], KiC,
-                coords[:Ki_ADP], coords[:K_Pi_N], KiN)
-        return Dict{Symbol,Float64}(fp[i] => vals[i] for i in 1:7)
-    end
     # PGD fully-RE (fiber-free): map the 6 core RE dissociation constants straight to the RE
     # binding free-params — NO koff/kon fiber (release_rate/release_eq inert here, accepted only
-    # for signature parity, exactly like the HK1 branch above). Detailed balance fixes the ternary:
+    # for signature parity). Detailed balance fixes the ternary:
     # K_NADP_EPGA = alpha*Kd_NADP. The effector dead-ends map from the optional coords when present
     # (V1 carries both ATP dead-ends; :K_NADPH_EPGA is a V3-only slot; the effectors-off :full_re
     # mechanism carries none of them, so all three haskey-guards no-op there).
@@ -136,7 +116,7 @@ function _deploy_micro_map(enzyme::Symbol, coords::AbstractDict; release_rate::R
             :K_NADPH_EPGA     => coords[:Ki_NADPH],        # forward NADPH dead-end on E·PGA
         )
     else
-        error("cha_deploy_micro: unknown enzyme $enzyme (expected :G6PD, :PGD, or :HK1)")
+        error("cha_deploy_micro: unknown enzyme $enzyme (expected :G6PD or :PGD)")
     end
 end
 

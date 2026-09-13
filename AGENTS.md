@@ -28,15 +28,7 @@ identifiable from the data; see `docs/G6PD_session_context.md` and
 > `src/enzymes/<enzyme>.jl`; the builder auto-derives the decomposed call notation
 > `E(NADP,G6P)` the upstream DSL requires. Rate-constant references use upstream's
 > composition-semantic names (`K_NADP_E`, `koff_NADPH_E`, `k_EG6PNADP_to_ENADPHPGLn`,
-> …). **HK1 is guarded**: its bespoke low-level `EnzymeMechanism` construction +
-> allosteric DSL need a separate port from the upstream migration that G6PD/PGD
-> already went through. `src/enzymes/hk1.jl` is included inside a `try/catch` in
-> `src/FitRateEquation.jl`; if it fails to load on the installed EnzymeRates build,
-> `HK1_AVAILABLE` is set to `false`, G6PD/PGD load normally, HK1 tests auto-skip,
-> and `run_hk1()` raises a clear error pointing back here rather than silently
-> doing nothing. There is currently no bundled EnzymeRates release on which HK1
-> wiring succeeds — treat `run_hk1` as **not yet available** until this note is
-> updated.
+> …).
 
 ## What it fits — the Cha-form macro-direct law
 
@@ -68,7 +60,7 @@ and makes *every* product release a rapid-equilibrium dissociation (ordered
 CO₂ → Ru5P → NADPH), so there is **no promoted SS-release fiber** (`C = 1`,
 apparent Km = α·Kd) and NADPH becomes a **competitive free-E ligand**. The law is
 `ChaLaws.cha_rate_PGD_fullRE` with readoff `ChaInvert.cha_macro_readoffs_PGD_fullRE`;
-every code path is guarded on `variant === :full_re`, so `:cha_base` (and G6PD/HK1)
+every code path is guarded on `variant === :full_re`, so `:cha_base` (and G6PD)
 are byte-identical when it is not selected. It is an **evaluation-only** variant —
 not deployed into `PentosePhosphatePathway.jl`. See
 [`docs/pgd_fullre_evaluation.md`](docs/pgd_fullre_evaluation.md) for the fit / CV /
@@ -229,7 +221,7 @@ parsimony trade-off: removing the anchor doesn't simplify the mechanism, it leav
 false` on a variant that still requires it (the deploy variant, `:RE_rate_eq`) tags
 that variant's output `NOT DEPLOYABLE` in `micro_parameters.jl`/`report.md`
 (per-variant, not per-run); the anchor state + variants are always recorded in
-`provenance.toml`. No-op for PGD/HK1.
+`provenance.toml`. No-op for PGD.
 
 Pinned constants are tagged `:literature_pinned` **structurally** (a coordinate that
 has a pin), never from profile curvature. `report.md` surfaces a **mode-agreement
@@ -294,7 +286,7 @@ the seven artifacts below to `outdir` and returns the results):
 ```julia
 using FitRateEquation
 
-fit_consensus_equation(:g6pd | :pgd | :hk1;
+fit_consensus_equation(:g6pd | :pgd;
     variants=nothing, data_csv=nothing, smoke=false, outdir=nothing, nprocs=nothing,
     anchor_reverse=nothing,                    # G6PD-only; variant-aware default (below)
     n_restarts=nothing, maxiter=nothing, maxtime=nothing, seed=nothing)  # power-user budget
@@ -311,7 +303,6 @@ the output folder after it.
 ```julia
 run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true)
 run_pgd(;  outdir=nothing, smoke=false, nprocs=nothing)
-run_hk1(;  outdir=nothing, smoke=false, nprocs=nothing)   # errors: HK1 guarded, see above
 ```
 
 There is no `run_g6pd_noatp` / `run_pgd_fullre`: use
@@ -340,7 +331,7 @@ There is no `run_g6pd_noatp` / `run_pgd_fullre`: use
 - **Fit variants per enzyme:** G6PD `:SS_NADPH_release_rate_eq` (deploy) + `:no_atp`
   (ATP-free) + the dead-end-dropped ablations `:no_g6p_nadph_deadend`,
   `:no_g6p_atp_deadend`, `:no_g6p_both_deadends`; PGD `:cha_base` (deploy) + `:full_re`
-  (fully-RE evaluation variant); HK1 `:H1`, `:H4` (not runnable while guarded). All are
+  (fully-RE evaluation variant). All are
   selected the same way — `fit_consensus_equation(:enzyme; variants=[…])` — with no
   dedicated runners; each variant carries its own `row_filter`, so e.g. `:no_atp` drops
   the ATP-bearing rows while the G6P dead-end ablations keep ATP a metabolite. The
@@ -351,8 +342,8 @@ There is no `run_g6pd_noatp` / `run_pgd_fullre`: use
   rows it keeps are exactly the rows snapshotted to `fit_corpus.csv`
   (`drop_atp_rows` is the bundled example).
 - **Config builders are internal, not exported.** `FitRateEquation.g6pd_config` /
-  `pgd_config` / `hk1_config` (data CSV, `deploy_keq`, metabolite columns/units) live in
-  `src/configs/G6PD.jl`, `src/configs/PGD.jl`, `src/configs/HK1.jl` and are the objects
+  `pgd_config` (data CSV, `deploy_keq`, metabolite columns/units) live in
+  `src/configs/G6PD.jl`, `src/configs/PGD.jl` and are the objects
   the symbol entry point resolves internally — user code does not build them; it passes
   `data_csv=` to `fit_consensus_equation(:enzyme; …)`. The bundled corpora resolve via
   `pkgdir(FitRateEquation)` so they load correctly regardless of installation location;
@@ -365,12 +356,12 @@ There is no `run_g6pd_noatp` / `run_pgd_fullre`: use
 cli_main(ARGS)`) dispatching `fit_consensus_equation` in-process, no subprocess:
 
 ```sh
-bin/fitrateequation <g6pd|pgd|hk1> [--smoke] [--nprocs N] [--outdir DIR] [--data CSV] [--variant NAME]
+bin/fitrateequation <g6pd|pgd> [--smoke] [--nprocs N] [--outdir DIR] [--data CSV] [--variant NAME]
 bin/fitrateequation plot <run_dir>
 bin/fitrateequation help
 ```
 
-Subcommands are `g6pd | pgd | hk1 | plot | help`. `--data` and `--variant` are valid
+Subcommands are `g6pd | pgd | plot | help`. `--data` and `--variant` are valid
 with any enzyme subcommand (`--variant NAME` fits an alternative law, e.g. `no_atp`,
 `full_re`, `no_g6p_atp_deadend`); the old `g6pd-noatp` subcommand is gone — use
 `g6pd --variant no_atp`.
@@ -404,9 +395,7 @@ plot_consensus_fit("results/G6PD_2026-07-16_smoke")
   figure's own apparent Keq** (the reverse arm's Haldane `kr`), read per-row from
   the corpus. A per-figure Vmax gauge normalizes each panel, so the plots show
   **shape agreement**, not absolute scale.
-- **G6PD and PGD only.** HK1 is not yet supported — its corpus lacks the
-  `X_axis_label` column the per-figure renderer needs, so pointing the plotter at
-  an HK1 run dir raises a clear error rather than rendering.
+- **G6PD and PGD only.**
 - The non-Makie logic (enzyme detection, config lookup, coordinate readback,
   `read_fit_corpus`) lives in `src/plot_support.jl` and is reachable without
   loading CairoMakie; only the render loop itself lives in the extension. The first
@@ -506,10 +495,9 @@ src/cha_deploy.jl     closed-form macro→micro deploy inverse (micro_parameters
 src/cha_koffq_report.jl   G6PD koffQ hybrid report (swept deploy + reverse diagnostic)
 src/promotable.jl     declarative registry of promotable slow steps (G6PD nadph_release)
 
-src/enzymes/g6pd.jl, src/enzymes/pgd.jl, src/enzymes/hk1.jl
-                       per-enzyme topology + lit values + alias/ki-ratio maps (hk1.jl
-                       guarded — see the EnzymeRates dependency note above)
-src/configs/G6PD.jl, src/configs/PGD.jl, src/configs/HK1.jl
+src/enzymes/g6pd.jl, src/enzymes/pgd.jl
+                       per-enzyme topology + lit values + alias/ki-ratio maps
+src/configs/G6PD.jl, src/configs/PGD.jl
                        data CSV path (pkgdir-resolved), deploy_keq, metabolite columns
 src/enzyme_wiring.jl   EnzymeWiring registry struct + accessors + modes_for
 src/mechanisms.jl      generic dead-end / King-Altman builder helper
@@ -528,8 +516,7 @@ ext/FitRateEquationMakieExt.jl
                        CairoMakie package extension: the actual render loop
                        (plot_consensus_fit), loads only when CairoMakie is loaded
 
-data/                  bundled corpora: G6PD_all_EnzymeData.csv, PGD_EnzymeData_with_CO2.csv,
-                       Choe_HK1_kinetic_data.csv
+data/                  bundled corpora: G6PD_all_EnzymeData.csv, PGD_EnzymeData_with_CO2.csv
 bin/fitrateequation    CLI entry point (using FitRateEquation; cli_main(ARGS))
 test/                  regression suite (runtests.jl); test/fixtures/ holds the byte-identity
                        smoke references (see above)

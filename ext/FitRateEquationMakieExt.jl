@@ -15,8 +15,8 @@
 # CHA_DEPLOY_RELEASE_RATE, and evaluated through FitRateEquation.ChaLaws.cha_rate_*, via the
 # ChaAdapter defined in plot_support.jl.
 #
-# HK1 is scoped out: its corpus has no X_axis_label column (needed to pick each panel's
-# swept metabolite), so read_fit_corpus raises a clear error on an HK1 run dir.
+# A run dir whose corpus has no X_axis_label column (needed to pick each panel's
+# swept metabolite) makes read_fit_corpus raise a clear error.
 # ##########################################################################################
 
 module FitRateEquationMakieExt
@@ -254,7 +254,7 @@ function FitRateEquation.plot_consensus_fit(run_dir::AbstractString)
     is_absolute && println("Scale: absolute (raw predicted-vs-measured rates)")
 
     # The rows this run ACTUALLY fit — not a re-derivation from `cfg`, which cannot see a
-    # custom data_csv or row_filter. Errors for HK1 (no X_axis_label) and for pre-0.2.0
+    # custom data_csv or row_filter. Errors for a corpus with no X_axis_label and for pre-0.2.0
     # run dirs (no snapshot).
     df = FitRateEquation.read_fit_corpus(run_dir)
     # This line's WORDING is asserted on by test/test_plot_render.jl — it is the only

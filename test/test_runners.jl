@@ -9,10 +9,6 @@ using Test, FitRateEquation
     @test filesize(joinpath(out, "micro_parameters.jl")) > 0   # deploy block non-empty
 end
 
-@testset "run_hk1 errors clearly while guarded" begin
-    FitRateEquation.HK1_AVAILABLE || @test_throws ErrorException run_hk1(smoke=true, nprocs=1, outdir=mktempdir())
-end
-
 @testset "run_* wrappers forward to the symbol entry" begin
     dir = mktempdir()
     r1 = run_g6pd(; smoke=true, nprocs=1, outdir=joinpath(dir, "a"))

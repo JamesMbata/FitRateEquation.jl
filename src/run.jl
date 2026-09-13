@@ -17,8 +17,7 @@
 deploy_variant(enzyme::Symbol) =
     enzyme === :G6PD ? :SS_NADPH_release_rate_eq :
     enzyme === :PGD  ? :cha_base :
-    enzyme === :HK1  ? :H1 :
-    error("deploy_variant: unknown enzyme $enzyme (expected :G6PD, :PGD, or :HK1)")
+    error("deploy_variant: unknown enzyme $enzyme (expected :G6PD or :PGD)")
 
 # The deploy mechanism: select it from consensus_variants(enzyme) by the deploy-variant name.
 function _deploy_mech(enzyme::Symbol)
@@ -29,13 +28,8 @@ function _deploy_mech(enzyme::Symbol)
     error("_deploy_mech: deploy variant $v not found in consensus_variants($enzyme)")
 end
 
-# Variants the run sweeps. G6PD/PGD run only their single deploy variant; HK1 runs H1 (alpha=:one,
-# the raw {Ki_G6P_C, Ki_G6P_N} parameterization, 3 modes) and H4 (the SAME alpha=1 law but
-# reparameterized in the data-identifiable {Keff, split_ratio}, mode1-only). H3 (alpha=:infinity)
-# was REMOVED: the reverse-rate turnover requires the [G6P]² term H3 deletes
-# (notes/2026-06-13_hk1_g6p_ridge_resolution_report.md).
-run_variants(enzyme::Symbol) =
-    enzyme === :HK1 ? [:H1, :H4] : [deploy_variant(enzyme)]
+# Variants the run sweeps. G6PD/PGD each run only their single deploy variant.
+run_variants(enzyme::Symbol) = [deploy_variant(enzyme)]
 
 # G6PD dead-end-dropped ablation variants (src/enzymes/g6pd.jl) for which
 # `anchor_reverse=false` is now a supported default, not a diagnostic: fit on the smaller,
@@ -49,7 +43,7 @@ const _G6PD_ANCHOR_OPTIONAL_VARIANTS = (:no_g6p_nadph_deadend, :no_g6p_atp_deade
                                         :no_g6p_both_deadends)
 
 # Whether `variant` still REQUIRES the reverse anchor for deployability (the deployed law and
-# the raw conflating RE law, for G6PD; always true for PGD/HK1, which have no such anchor).
+# the raw conflating RE law, for G6PD; always true for PGD, which has no such anchor).
 _requires_reverse_anchor(enzyme::Symbol, variant::Symbol) =
     !(enzyme === :G6PD && variant in _G6PD_ANCHOR_OPTIONAL_VARIANTS)
 
@@ -92,7 +86,7 @@ function _fit_and_cv(variant::Symbol, mech, d::Dataset;
                      maxtime::Real=20.0, seed::Int=1, enzyme::Symbol=_enzyme_of(mech),
                      anchor_reverse::Bool=true, scale::Symbol=:relative,
                      extra_pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
-    keq     = enzyme === :HK1 ? median(d.keq) : nothing
+    keq     = nothing
     pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
                                       extra=extra_pins, scale=scale)
     anchors = cha_anchors(enzyme, mode)
@@ -226,7 +220,7 @@ function _run_fit_task(t, d::Dataset, mechs; n_restarts::Int, maxiter::Int, maxt
                        enzyme::Symbol=:G6PD, scale::Symbol=:relative)
     mech = mechs[t.variant]
     dtr  = _subset(d, t.train_idx)
-    keq  = enzyme === :HK1 ? median(d.keq) : nothing
+    keq  = nothing
     fit  = ChaFit.cha_fit_candidate(enzyme, mech, dtr; n_restarts=n_restarts, maxiter=maxiter,
                                     maxtime=maxtime, seed=t.seed, keq=keq, pins=t.pins,
                                     anchors=t.anchors, variant=t.variant, scale=scale)
@@ -262,7 +256,7 @@ function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbo
               se      = isempty(losses) ? 0.0 : std(losses)/sqrt(length(losses)))
         r = (variant=variant, mode=mode, mech=mech, pins=pins, anchors=anchors, fit=fit, cv=cv)
         idf = ChaClassify.cha_identifiable_functions(enzyme, mech, d, r.fit.coords;
-                    keq=(enzyme === :HK1 ? median(d.keq) : nothing), pins=pins, variant=variant,
+                    keq=nothing, pins=pins, variant=variant,
                     scale=scale)
         # Residual variance σ̂² = in-sample loss / dof, for the calibrated macro-constant CIs.
         sigma2 = r.fit.loss / max(nrows(d) - idf.rank, 1)
@@ -287,7 +281,7 @@ end
  anchor-optional ablations (`_G6PD_ANCHOR_OPTIONAL_VARIANTS`), `true` otherwise. Explicitly
  passing `false` for a variant that still requires the anchor (the deploy variant,
  `:RE_rate_eq`) reproduces the conflating fit and marks that variant's output NOT DEPLOYABLE.
- No-op for PGD/HK1 (no always-on reverse anchor).
+ No-op for PGD (no always-on reverse anchor).
  `row_filter` is a `DataFrame -> DataFrame` function applied to `read_corpus`'s output before
  the `Dataset` is built, so the rows it keeps are exactly the rows fit and the rows written to
  `fit_corpus.csv` (`drop_atp_rows` is the bundled example)."
@@ -337,7 +331,7 @@ end
     fit_consensus_equation(enzyme::Symbol; variants, data_csv, smoke, outdir, nprocs,
                            anchor_reverse, n_restarts, maxiter, maxtime, seed)
 
-The single entry point. `enzyme` is `:g6pd`, `:pgd`, or `:hk1` (case-insensitive). Selects the
+The single entry point. `enzyme` is `:g6pd` or `:pgd` (case-insensitive). Selects the
 enzyme's deploy variant by default; pass `variants=[:no_atp]`, `[:full_re]`, `[:no_g6p_atp_deadend]`,
 … to fit an alternative law (its row filter + outdir label are applied automatically). `smoke=true`
 uses the fast plumbing budget. `data_csv` fits your own corpus (canonical columns required).
@@ -349,9 +343,7 @@ function fit_consensus_equation(enzyme::Symbol; variants=nothing, data_csv=nothi
         n_restarts=nothing, maxiter=nothing, maxtime=nothing, seed::Int=1,
         scale::Symbol=:relative, pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
     enz = _canonical_enzyme(enzyme)
-    enz === :HK1 && !HK1_AVAILABLE &&
-        error("HK1 is not available on this EnzymeRates build (deferred port). See AGENTS.md.")
-    # Absolute scale is wired for G6PD only (PGD/HK1 stay relative-only); no silent fallback.
+    # Absolute scale is wired for G6PD only (PGD stays relative-only); no silent fallback.
     scale === :absolute && enz !== :G6PD &&
         error("absolute scale is not yet wired for $enz (G6PD only).")
     vars = variants === nothing ? run_variants(enz) : Vector{Symbol}(variants)
@@ -443,7 +435,6 @@ end
 _apparent_kms(enzyme::Symbol) =
     enzyme === :G6PD ? (:Km_G6P,) :
     enzyme === :PGD  ? (:Km_PGA, :Km_NADP) :
-    enzyme === :HK1  ? (:Km_Glc, :Km_ATP) :
     ()
 
 function _apparent_km_rows(enzyme::Symbol, coords::AbstractDict)
@@ -451,28 +442,11 @@ function _apparent_km_rows(enzyme::Symbol, coords::AbstractDict)
     for which in _apparent_kms(enzyme)
         km = ChaFit.cha_apparent_km(enzyme, coords, which)   # at deploy koffQ -> deployed law
         push!(rows, (name=which, value=km, class=:derived, ci=NaN))
-        # HK1 apparent Km == Kd (no fiber); specificity is undefined there, so skip it.
-        if enzyme !== :HK1
-            spec = ChaFit.cha_specificity(enzyme, coords, which)   # kcat/Km, koffQ-invariant
-            push!(rows, (name=Symbol("kcatKm_", String(which)[4:end]),
-                         value=spec, class=:derived, ci=NaN))
-        end
+        spec = ChaFit.cha_specificity(enzyme, coords, which)   # kcat/Km, koffQ-invariant
+        push!(rows, (name=Symbol("kcatKm_", String(which)[4:end]),
+                     value=spec, class=:derived, ci=NaN))
     end
     rows
-end
-
-# H4-only DERIVED rows: the reparameterized {Keff, split_ratio} coords back-map to the physical
-# G6P dissociation constants {Ki_G6P_C (loose, C-half), Ki_G6P_N (tight, N-half)} and the product
-# √(Kc·Kn). Surfaced as :derived so downstream readers see the physical constants alongside the
-# data-identified Keff/split_ratio. (H1 reports Ki_G6P_C/Ki_G6P_N directly as its classed coords.)
-function _hk1_h4_derived_rows(enzyme::Symbol, variant::Symbol, coords::AbstractDict)
-    (enzyme === :HK1 && variant === :H4 && haskey(coords, :Keff)) || return NamedTuple[]
-    Keff = coords[:Keff]; ratio = coords[:split_ratio]
-    sqrtP = Keff * ratio; P = sqrtP^2; sumK = P / Keff
-    sq = sqrt(max(sumK^2 - 4P, 0.0)); KiC = (sumK + sq) / 2; KiN = (sumK - sq) / 2
-    [(name=:Ki_G6P_C, value=KiC,    class=:derived, ci=NaN),
-     (name=:Ki_G6P_N, value=KiN,    class=:derived, ci=NaN),
-     (name=:sqrt_KcKn, value=sqrtP, class=:derived, ci=NaN)]
 end
 
 # `corpus` is typed `AbstractDataFrame` to match `dataset_from_corpus` (src/core/data.jl): the
@@ -513,10 +487,6 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
                          value=m.value, class=m.class, ci=m.ci))
         end
         for m in _apparent_km_rows(enzyme, res.r.fit.coords)
-            push!(rows, (variant=res.variant, mode=res.mode, name=m.name,
-                         value=m.value, class=m.class, ci=m.ci))
-        end
-        for m in _hk1_h4_derived_rows(enzyme, res.variant, res.r.fit.coords)
             push!(rows, (variant=res.variant, mode=res.mode, name=m.name,
                          value=m.value, class=m.class, ci=m.ci))
         end
@@ -594,9 +564,6 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
                 println(io, "| $(m.name) | $(m.value) | $(m.class) | $(m.ci) |")
             end
             for m in _apparent_km_rows(enzyme, res.r.fit.coords)
-                println(io, "| $(m.name) | $(m.value) | $(m.class) | $(m.ci) |")
-            end
-            for m in _hk1_h4_derived_rows(enzyme, res.variant, res.r.fit.coords)
                 println(io, "| $(m.name) | $(m.value) | $(m.class) | $(m.ci) |")
             end
             # Absolute-mode turnover verdict: the fitted kcat against the 150–250 s⁻¹ band. A
@@ -695,8 +662,8 @@ end
 
 # Enzyme-specific closing note for report.md. PGD/G6PD: the forward-Ki de-conflation caveat
 # (the G6PD note reports the ACTUAL fitted Mode-1 cross-term Ki_NADPH — fit directly, not
-# hardcoded — at full budget the corpus reads it ABOVE the 9–24 µM literature band). HK1: the
-# H1/H3 candidate + pinned-feedback note. Any other enzyme returns "" (no note).
+# hardcoded — at full budget the corpus reads it ABOVE the 9–24 µM literature band). Any other
+# enzyme returns "" (no note).
 function _report_note(enzyme::Symbol, results)
     enzyme === :PGD && return string(
         "> **Forward `Ki_NADPH` de-conflation (PGD):** on the Cha law the forward product-\n",
@@ -705,12 +672,6 @@ function _report_note(enzyme::Symbol, results)
         "> 17 µM) in Mode 2/3; Mode 1 reports it diagnostic/unconstrained (the forward-only\n",
         "> cross-term de-conflation was refuted on the PGD corpus — pin-only 17 µM).\n",
         "> FROZEN: do not add SS steps to chase this (see test_rec4_topology_freeze.jl).\n")
-    enzyme === :HK1 && return string(
-        "> **HK1 consensus (H1 α=1 two G6P sites / H3 α=∞ single net site).** The two\n",
-        "> data-identified substrate constants (`Km_Glc`, `Km_ATP`) are fit from the corpus; the\n",
-        "> product-feedback constants (`Ki_G6P_C`, `Ki_G6P_N`, `K_Pi_N`, `Ki_ADP`) are literature-\n",
-        "> pinned in mode2/mode3. The two G6P sites are symmetric quadratic roots (non-identifiable\n",
-        "> together); mode1 (no pins) is expected to show that C/N ridge — the honest baseline.\n")
     enzyme === :G6PD && return string(
         "> **Forward `Ki_NADPH` de-conflation (G6PD):** the Cha law reads the forward product-\n",
         "> inhibition `Ki_NADPH` from the E·G6P·NADPH dead-end cross term, with `Km_NADPH_rev`\n",
@@ -722,12 +683,12 @@ function _report_note(enzyme::Symbol, results)
 end
 
 # =========================================================================================
-#                    Exported runners: run_g6pd / run_pgd / run_hk1
+#                    Exported runners: run_g6pd / run_pgd
 # =========================================================================================
 #
 # Thin wrappers around `fit_consensus_equation` that pick the budget (smoke vs full), the default outdir,
 # and spin up workers via `setup_workers`. These are the library replacement for the old
-# per-enzyme launcher scripts (run_g6pd.jl / run_pgd.jl / run_hk1.jl).
+# per-enzyme launcher scripts (run_g6pd.jl / run_pgd.jl).
 
 function _budget(smoke::Bool)
     smoke ? (n_restarts=2, maxiter=150, maxtime=120.0) :
@@ -741,8 +702,8 @@ end
 # Map a user enzyme symbol (:g6pd or :G6PD, any case) to the internal upper-case symbol.
 function _canonical_enzyme(e::Symbol)
     u = Symbol(uppercase(String(e)))
-    u in (:G6PD, :PGD, :HK1) ||
-        error("fit_consensus_equation: unknown enzyme :$e (expected :g6pd, :pgd, or :hk1)")
+    u in (:G6PD, :PGD) ||
+        error("fit_consensus_equation: unknown enzyme :$e (expected :g6pd or :pgd)")
     u
 end
 
@@ -750,10 +711,8 @@ end
 function _enzyme_config(enz::Symbol, data_csv)
     if enz === :G6PD
         data_csv === nothing ? g6pd_config() : g6pd_config(; data_csv=data_csv)
-    elseif enz === :PGD
-        data_csv === nothing ? pgd_config() : pgd_config(; data_csv=data_csv)
     else
-        data_csv === nothing ? hk1_config() : hk1_config(; data_csv=data_csv)
+        data_csv === nothing ? pgd_config() : pgd_config(; data_csv=data_csv)
     end
 end
 
@@ -795,16 +754,6 @@ Thin alias for `fit_consensus_equation(:pgd; …)`. As `run_g6pd`, for PGD.
 """
 run_pgd(; outdir=nothing, smoke=false, nprocs=nothing) =
     fit_consensus_equation(:pgd; outdir, smoke, nprocs)
-
-"""
-    run_hk1(; outdir=nothing, smoke=false, nprocs=nothing)
-
-Thin alias for `fit_consensus_equation(:hk1; …)`. As `run_g6pd`, for HK1. The symbol method
-errors clearly if HK1 wiring is unavailable on this EnzymeRates build
-(`FitRateEquation.HK1_AVAILABLE == false`; a deferred port — see AGENTS.md).
-"""
-run_hk1(; outdir=nothing, smoke=false, nprocs=nothing) =
-    fit_consensus_equation(:hk1; outdir, smoke, nprocs)
 
 # Format the actual Mode-1 G6PD cross-term Ki_NADPH (value + class + CI) for the report note.
 function _g6pd_ki_nadph_desc(results)

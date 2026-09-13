@@ -8,9 +8,8 @@ them to a single, literature-consistent "consensus" rate equation for that
 enzyme. It reports back the key numbers that describe the enzyme's behavior —
 things like how tightly it binds each substrate, and how strongly related
 molecules inhibit it — along with plots and a written report so you can see how
-well the equation matches the data. It currently supports two enzymes fully
-(G6PD and PGD, both central to red-blood-cell metabolism), with a third (HK1)
-planned but not yet available.
+well the equation matches the data. It currently supports two enzymes, G6PD and
+PGD, both central to red-blood-cell metabolism.
 
 You do not need to know any biochemistry or write any fitting code yourself —
 the package ships with the enzyme data already built in, and one function call
@@ -129,10 +128,10 @@ output files; they differ only in the structure of the rate equation (which
 product-release steps are treated as steady-state, and which substrate/product
 "dead-end" inhibitions are included).
 
-There is one entry point for every fit: `fit_consensus_equation(:g6pd | :pgd | :hk1)`.
+There is one entry point for every fit: `fit_consensus_equation(:g6pd | :pgd)`.
 By default it fits that enzyme's deployed consensus law; to fit an alternative law
-instead, name the variant with the `variants` keyword. `run_g6pd()` / `run_pgd()` /
-`run_hk1()` are thin aliases for the deployed-law call, kept for discoverability.
+instead, name the variant with the `variants` keyword. `run_g6pd()` / `run_pgd()`
+are thin aliases for the deployed-law call, kept for discoverability.
 
 | Enzyme | Rate law | How to run |
 |---|---|---|
@@ -225,7 +224,6 @@ Everything after the `--` is passed to the tool. The subcommands are:
 |---|---|
 | `g6pd` | Fit G6PD |
 | `pgd` | Fit PGD |
-| `hk1` | Fit HK1 *(not yet available — see Troubleshooting)* |
 | `plot <run_dir>` | Render the fitted law over the data for a finished run |
 | `help` | Print usage |
 
@@ -273,12 +271,6 @@ registry, so Julia cannot resolve it automatically as a dependency.
 FitRateEquation.jl requires **Julia 1.11 or later**. Run `julia --version` in
 your terminal to check, and download a newer release from
 <https://julialang.org/downloads/> if needed.
-
-**`run_hk1()` throws an error:** this is expected — HK1 support is not yet
-available in this release (the underlying mechanism hasn't been ported over
-yet). `run_g6pd` and `run_pgd` (and their general form,
-`fit_consensus_equation(:g6pd | :pgd)`, including every variant) are fully
-available.
 
 ## 10. An alternative PGD rate law (`:full_re`)
 

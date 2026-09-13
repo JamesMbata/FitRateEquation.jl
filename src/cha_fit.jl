@@ -48,7 +48,6 @@ export resolve_cha_pins
 # parents are Main.ChaLaws / Main.FitRateEquation) AND as a FitRateEquation submodule
 # (pipeline). The test header includes cha_laws.jl before cha_fit.jl, so `..ChaLaws` exists.
 using ..ChaLaws
-using ..ChaLawsHK1
 using ..FitRateEquation
 
 # CMA-ES multi-start machinery (same package symbols coeff_fit.jl uses). ChaFit is its own
@@ -63,15 +62,6 @@ using Statistics: median
 # diagnostic both-product shape. Chosen as a neutral mid-band dimensionless release
 # equilibrium (observed readoff KdRu spans ~1e-2..1e0 in these rate-constant-ratio units).
 const CHA_KDRU_DEFAULT = 1.0
-
-# HK1 candidate alpha (the N/C-half G6P negative-cooperativity axis) is a FIXED structural
-# value, NOT a fit coord: H1 = two independent G6P sites (alpha=1), H3 = mutual exclusion
-# (alpha=Inf, drops the [G6P]^2 coupling). Threaded by variant through cha_macro_tuple.
-_hk1_variant_alpha(variant::Symbol) =
-    variant === :H1 ? 1.0 :
-    variant === :H4 ? 1.0 :    # H4 = H1 (alpha=1) reparameterized in {Keff, split_ratio}
-    variant === :H3 ? Inf  :
-    error("_hk1_variant_alpha: HK1 variant must be :H1, :H4, or :H3 (got $variant)")
 
 # -----------------------------------------------------------------------------------------
 #   Free fit coordinates: the data-identifiable forward shape constants. EXCLUDES the gauge
@@ -102,18 +92,8 @@ function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy; scale::Symbol=:rel
             [:Kd_NADP, :Kd_PGA, :alpha, :Kd_NADPH, :Kd_Ru5P, :Kd_CO2] :
             [:Kd_NADP, :Kd_PGA, :alpha, :Kd_CO2, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EN,
              :Km_NADPH_rev]
-    elseif enzyme === :HK1
-        # H4 reparameterizes the two G6P dissociation constants {Ki_G6P_C, Ki_G6P_N} into the
-        # data-identifiable pair {Keff, split_ratio}, where Keff = 1/(1/Kc+1/Kn) (effective G6P
-        # feedback, forward-identified) and split_ratio = √(Kc·Kn)/Keff (the reverse-turnover-
-        # identified split). The back-map (cha_macro_tuple, variant=:H4) reconstructs Kc,Kn.
-        # H1/H3 keep the raw {Ki_G6P_C, Ki_G6P_N} coords.
-        # See notes/2026-06-13_hk1_g6p_ridge_resolution_report.md.
-        variant === :H4 ?
-            [:Kd_Glc, :Kd_ATP, :Keff, :Ki_ADP, :split_ratio, :K_Pi_N] :
-            [:Kd_Glc, :Kd_ATP, :Ki_G6P_C, :Ki_ADP, :Ki_G6P_N, :K_Pi_N]
     else
-        error("cha_coords: unknown enzyme $enzyme (expected :G6PD, :PGD, or :HK1)")
+        error("cha_coords: unknown enzyme $enzyme (expected :G6PD or :PGD)")
     end
     (enzyme === :G6PD && scale === :absolute) ? vcat(base, :kcat) : base
 end
@@ -153,7 +133,6 @@ end
 function _default_release_eq(enzyme::Symbol, coords::AbstractDict)
     enzyme === :G6PD && return coords[:Km_NADPH_rev]
     enzyme === :PGD  && return CHA_KDRU_DEFAULT
-    enzyme === :HK1  && return 1.0
     error("_default_release_eq: unknown enzyme $enzyme")
 end
 
@@ -168,43 +147,9 @@ function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
                          release_eq::Real = _default_release_eq(enzyme, coords),
                          kr::Union{Nothing,Real} = nothing,
                          variant::Symbol = :_deploy)
-    # HK1 has no Haldane kr (reverse arm is internal via Keq), and its alpha is a FIXED
-    # per-variant structural value, NOT a coord — so return early, never calling cha_haldane_kr.
-    if enzyme === :HK1
-        if variant === :H4
-            # Back-map the reparameterized coords {Keff, split_ratio} → {Ki_G6P_C, Ki_G6P_N}.
-            # √P = Keff·split_ratio; sumK = Kc+Kn = P/Keff; Kc,Kn = roots of x²−sumK·x+P.
-            # split_ratio ≥ 2 (bound) guarantees disc ≥ 0; convention Kc = larger (loose) root.
-            Keff  = coords[:Keff]
-            ratio = coords[:split_ratio]
-            sqrtP = Keff * ratio
-            P     = sqrtP^2
-            sumK  = P / Keff
-            disc  = sumK^2 - 4P
-            sq    = sqrt(max(disc, 0.0))
-            KiC   = (sumK + sq) / 2
-            KiN   = (sumK - sq) / 2
-            return (; Kd_Glc   = coords[:Kd_Glc],
-                      Kd_ATP   = coords[:Kd_ATP],
-                      Ki_G6P_C = KiC,
-                      Ki_ADP   = coords[:Ki_ADP],
-                      Ki_G6P_N = KiN,
-                      K_Pi_N   = coords[:K_Pi_N],
-                      alpha    = 1.0,
-                      Keq = keq, kf = kf, k2f = kf, Et = Et)
-        end
-        return (; Kd_Glc   = coords[:Kd_Glc],
-                  Kd_ATP   = coords[:Kd_ATP],
-                  Ki_G6P_C = coords[:Ki_G6P_C],
-                  Ki_ADP   = coords[:Ki_ADP],
-                  Ki_G6P_N = coords[:Ki_G6P_N],
-                  K_Pi_N   = coords[:K_Pi_N],
-                  alpha    = _hk1_variant_alpha(variant),
-                  Keq = keq, kf = kf, k2f = kf, Et = Et)   # k2f == kf == 1: Pi competitor-only
-    end
     # PGD fully-RE variant: NO promoted SS-release fiber (no koff/kon; C=1). The reverse arm is
     # carried entirely by the Haldane kr; the product Kd's (Kd_NADPH/Kd_Ru5P/Kd_CO2) are real
-    # coords. Mirrors the HK1 early-return so the generic release-fiber path below is untouched.
+    # coords. Early-return so the generic release-fiber path below is untouched.
     # Effector dead-ends are appended ONLY when present as coords (default OFF → law uses Inf).
     if enzyme === :PGD && variant === :full_re
         krv = kr === nothing ?
@@ -252,7 +197,7 @@ function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
                   koff = koff, kon = kon, kf = kf, kr = krv, Et = Et,
                   Keq = keq)
     else
-        error("cha_macro_tuple: unknown enzyme $enzyme (expected :G6PD, :PGD, or :HK1)")
+        error("cha_macro_tuple: unknown enzyme $enzyme (expected :G6PD or :PGD)")
     end
 end
 
@@ -291,7 +236,6 @@ function _cha_row_logratios!(logratio, enzyme::Symbol, mech, d::Dataset, coords:
     cha_rate_enz = enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
                    enzyme === :PGD  ? (variant === :full_re ? ChaLaws.cha_rate_PGD_fullRE :
                                                               ChaLaws.cha_rate_PGD) :
-                   enzyme === :HK1  ? ChaLawsHK1.cha_rate_HK1 :
                    error("_cha_row_logratios!: unknown enzyme $enzyme")
     penalty = 0.0
     # Per-group row-index sets in unique(d.group) order (matches the old findall-per-group loop).
@@ -405,10 +349,6 @@ function _cha_row_kwargs(enzyme::Symbol, cc)
         return (NADP = _cha_field(cc, :NADP), PGA = _cha_field(cc, :PGA),
                 Ru5P = _cha_field(cc, :Ru5P), CO2 = _cha_field(cc, :CO2),
                 NADPH = _cha_field(cc, :NADPH), ATP = _cha_field(cc, :ATP))
-    elseif enzyme === :HK1
-        return (Glucose = _cha_field(cc, :Glucose), ATP = _cha_field(cc, :ATP),
-                G6P = _cha_field(cc, :G6P), ADP = _cha_field(cc, :ADP),
-                Pi = _cha_field(cc, :Pi))
     else
         error("_cha_row_kwargs: unknown enzyme $enzyme")
     end
@@ -427,7 +367,6 @@ end
 _default_release_rate(enzyme::Symbol) =
     enzyme === :G6PD ? 1.0 :
     enzyme === :PGD  ? 1.0 :
-    enzyme === :HK1  ? 1.0 :
     error("_default_release_rate: unknown enzyme $enzyme")
 
 # The promoted-release rate the pipeline DEPLOYS at (see the cha_deploy_micro call in run.jl,
@@ -491,13 +430,7 @@ function cha_apparent_km(enzyme::Symbol, coords::AbstractDict, which::Symbol;
                          kf::Real = 1.0,
                          release_rate::Real = CHA_DEPLOY_RELEASE_RATE,
                          variant::Symbol = :_deploy)
-    # HK1: C = 1 (no SS-release fiber) and gamma = 1, so apparent Km == binary Kd directly.
-    if enzyme === :HK1
-        which === :Km_Glc && return coords[:Kd_Glc]
-        which === :Km_ATP && return coords[:Kd_ATP]
-        error("cha_apparent_km(:HK1): expected :Km_Glc or :Km_ATP (got $which)")
-    end
-    # Fully-RE PGD is fiber-free (HK1 precedent): C = 1, so apparent Km == alpha*Kd exactly.
+    # Fully-RE PGD is fiber-free: C = 1, so apparent Km == alpha*Kd exactly.
     C = (enzyme === :PGD && variant === :full_re) ? 1.0 : 1 + kf / release_rate
     kd = which === :Km_PGA  ? coords[:Kd_PGA] :
          which === :Km_NADP ? coords[:Kd_NADP] :
@@ -512,8 +445,6 @@ end
 # forward corpus actually pins regardless of where the unidentifiable koffQ is parked. `which`
 # selects the substrate exactly as `cha_apparent_km`. Units: 1/M on the kf=1 gauge.
 function cha_specificity(enzyme::Symbol, coords::AbstractDict, which::Symbol; kf::Real = 1.0)
-    enzyme === :HK1 &&
-        error("cha_specificity: not defined for HK1 (no SS-release fiber; apparent Km == Kd)")
     kd = which === :Km_PGA  ? coords[:Kd_PGA] :
          which === :Km_NADP ? coords[:Kd_NADP] :
          which === :Km_G6P  ? coords[:Kd_G6P] :
@@ -688,32 +619,13 @@ function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol;
     # Merge the caller's explicit `extra` pins (coord ⇒ log10 value) OVER the mode-derived pins,
     # each guarded by _assert_pin_is_coord (errors on a non-coord / silent no-op). This is how
     # the absolute-mode ladder pins reverse/degenerate constants to data-determined values from
-    # a prior relative fit. Applied on EVERY return path (below) so it composes with HK1 too.
+    # a prior relative fit. Applied on EVERY return path (below).
     function _finish(p)
         for (k, v) in extra
             _assert_pin_is_coord(enzyme, k, variant; scale=scale)
             p[k] = v
         end
         p
-    end
-
-    # HK1 per-mode pin sets. Mode 1: nothing pinned (all forward shape constants free).
-    # Mode 2: pin the N-half regulatory constants (Ki_G6P_N, K_Pi_N) to literature. Mode 3:
-    # additionally pin the C-half product-inhibition constants (Ki_G6P_C, Ki_ADP).
-    if enzyme === :HK1
-        # H4 is the data-driven reparameterized variant {Keff, split_ratio}: NO pins in any mode
-        # (the literature pin names Ki_G6P_N/Ki_G6P_C are not H4 coords by construction).
-        variant === :H4 && return _finish(pins)
-        if mode === :mode2 || mode === :mode3
-            _pin!(:Ki_G6P_N); _pin!(:K_Pi_N)
-        end
-        if mode === :mode3
-            _pin!(:Ki_G6P_C); _pin!(:Ki_ADP)
-        end
-        if mode ∉ (:mode1, :mode2, :mode3)
-            error("resolve_cha_pins: unknown mode :$mode (expected :mode1/:mode2/:mode3)")
-        end
-        return _finish(pins)
     end
 
     # ALL MODES: anchor the conflating reverse channel where it is a coord with a lit value.
