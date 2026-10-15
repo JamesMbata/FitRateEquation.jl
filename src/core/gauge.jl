@@ -19,7 +19,7 @@
  names the chemistry forward rate `k_<from>_to_<to>` (SS releases are `koff_*`/`kon_*`,
  rapid-equilibrium constants `K_*`), so it is the unique fitted param of the `k_*_to_*` shape."
 function gauge_param(mech)
-    hits = [s for s in EnzymeRates.fitted_params(mech)
+    hits = [s for s in er_fitted_params(mech)
             if (t = String(s); startswith(t, "k_") && occursin("_to_", t))]
     isempty(hits) && error("no SS catalysis forward rate (k_*_to_*) to gauge in $(mech)")
     length(hits) > 1 && error("ambiguous gauge: multiple k_*_to_* forward rates $(hits) in $(mech)")
@@ -27,7 +27,7 @@ function gauge_param(mech)
 end
 
 "Fittable parameters minus the gauge parameter (the free vector's symbols)."
-free_params(mech) = filter(!=(gauge_param(mech)), collect(EnzymeRates.fitted_params(mech)))
+free_params(mech) = filter(!=(gauge_param(mech)), collect(er_fitted_params(mech)))
 
 "Build the rate_equation params NamedTuple: gauge=1, free from 10^logθ, plus Keq/E_total."
 function build_params(mech, logθ::AbstractVector; keq::Real, etotal::Real=1.0)
@@ -40,7 +40,7 @@ function build_params(mech, logθ::AbstractVector; keq::Real, etotal::Real=1.0)
     for (s, lv) in zip(free, logθ)
         vals[s] = T(10.0)^lv
     end
-    fps = EnzymeRates.fitted_params(mech)
+    fps = er_fitted_params(mech)
     names = (fps..., :Keq, :E_total)
     NamedTuple{names}((map(s -> vals[s], fps)..., T(keq), T(etotal)))
 end
@@ -51,11 +51,11 @@ function analytic_kcat(mech, logθ; keq::Real, sat::Real=1.0)
     # Saturating substrates = the mechanism's declared substrates (enzyme-agnostic).
     # `EnzymeRates.substrates` returns the substrate tuple (e.g. (:NADP,:G6P) for
     # G6PD, (:NADP,:PGA) for PGD); analytic_kcat saturates these and zeroes products.
-    subs = EnzymeRates.substrates(mech)
+    subs = er_substrates(mech)
     # Fail loud if the saturating substrates are absent from the mechanism: a silent
     # `s in subs` miss would zero every concentration and yield kcat ≈ 0 with no error.
     @assert all(in(mets), subs) "analytic_kcat substrates $(subs) not all present in mechanism metabolites $(mets)"
     concs = NamedTuple{Tuple(mets)}(map(s -> s in subs ? sat : 0.0, mets))
     p = build_params(mech, logθ; keq=keq)
-    EnzymeRates.rate_equation(mech, concs, p) / p.E_total
+    er_rate_equation(mech, concs, p) / p.E_total
 end

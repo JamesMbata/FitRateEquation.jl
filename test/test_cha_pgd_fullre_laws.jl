@@ -66,12 +66,12 @@ end
         keq  = 0.079
         mac  = cha_macro_readoffs_PGD_fullRE(m, logθ; keq=keq)
         # Characteristic forward rate: floor for the rel-error denominator.
-        vsat = abs(EnzymeRates.rate_equation(m,
+        vsat = abs(er_rate_equation(m,
             NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:PGA) ? 1e-2 : 0.0 for s in mets)),
             build_params(m, logθ; keq=keq)))
         for conc in grid
             cc   = NamedTuple{Tuple(mets)}(Tuple(getfield(conc, s) for s in mets))
-            vref = EnzymeRates.rate_equation(m, cc, build_params(m, logθ; keq=keq))
+            vref = er_rate_equation(m, cc, build_params(m, logθ; keq=keq))
             vcha = cha_rate_PGD_fullRE(mac; conc...)
             @test isapprox(vcha, vref; rtol=1e-10, atol=1e-10 * vsat)
         end
@@ -100,12 +100,12 @@ end
         keq  = 0.079
         mac  = cha_macro_readoffs_PGD_fullRE(m, logθ; keq=keq)
         @test isfinite(mac.Ki_NADPH)            # V3 carries the E·PGA NADPH dead-end
-        vsat = abs(EnzymeRates.rate_equation(m,
+        vsat = abs(er_rate_equation(m,
             NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:PGA) ? 1e-2 : 0.0 for s in mets)),
             build_params(m, logθ; keq=keq)))
         for conc in grid
             cc   = NamedTuple{Tuple(mets)}(Tuple(getfield(conc, s) for s in mets))
-            vref = EnzymeRates.rate_equation(m, cc, build_params(m, logθ; keq=keq))
+            vref = er_rate_equation(m, cc, build_params(m, logθ; keq=keq))
             vcha = cha_rate_PGD_fullRE(mac; conc...)
             @test isapprox(vcha, vref; rtol=1e-10, atol=1e-10 * vsat)
         end

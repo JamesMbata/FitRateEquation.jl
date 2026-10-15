@@ -63,12 +63,12 @@ end
         mac  = cha_macro_readoffs_G6PD(m, logθ; keq=keq)
         # Characteristic forward rate at these params -> floor for the rel-error denominator
         # (near a Haldane equilibrium null vref can pass exactly through 0).
-        vsat = abs(EnzymeRates.rate_equation(m,
+        vsat = abs(er_rate_equation(m,
             NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:G6P) ? 1e-2 : 0.0 for s in mets)),
             build_params(m, logθ; keq=keq)))
         for conc in grid
             cc = NamedTuple{Tuple(mets)}(Tuple(getfield(conc, s) for s in mets))
-            vref = EnzymeRates.rate_equation(m, cc, build_params(m, logθ; keq=keq))
+            vref = er_rate_equation(m, cc, build_params(m, logθ; keq=keq))
             vcha = cha_rate_G6PD(mac; conc...)
             @test isapprox(vcha, vref; rtol=1e-10, atol=1e-10 * vsat)
         end

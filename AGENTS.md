@@ -19,14 +19,20 @@ producing on this forward-saturation-dominated corpus (the binding *order* is no
 identifiable from the data; see `docs/G6PD_session_context.md` and
 `docs/PGD_session_context.md` in the sibling `PPP_Experiments` repo).
 
-> **EnzymeRates dependency:** this package runs on **upstream EnzymeRates**
-> (`DenisTitovLab/EnzymeRates.jl`, pinned in `Project.toml`'s `[sources]` for
-> dev/CI; a downstream consumer installs it separately by URL — see `README.md`
-> §3). It is self-contained — it vendors the data loader / mechanism builder /
+> **EnzymeRates dependency:** this package runs on **upstream EnzymeRates 0.9.x**
+> (`DenisTitovLab/EnzymeRates.jl`, registered in General; `[compat]` pins `0.9.1`).
+> EnzymeRates >= 0.6 names constants structurally (`K_EG6P_to_E_G6P`,
+> `k_ENADPH_to_E_NADPH`); FRE keeps the 0.5.0 composition-semantic names as its own
+> vocabulary and translates at the boundary in `src/core/er_names.jl`. **Never call
+> `EnzymeRates.rate_equation` / `fitted_params` / `parameters` / `substrates` /
+> `_dependent_param_exprs` / `_raw_symbolic_rate_polys` directly — use the `er_*`
+> wrappers**, or names will not match. `test/test_enzymerates_names.jl` replays a
+> 0.5.0-generated oracle (`test/fixtures/er050_oracle.toml`) through the layer.
+> It is self-contained — it vendors the data loader / mechanism builder /
 > gauge helpers under `src/core/` (formerly borrowed from `fitting/mechanism_id/`).
 > Mechanism topologies are written with terse opaque form names in
 > `src/enzymes/<enzyme>.jl`; the builder auto-derives the decomposed call notation
-> `E(NADP,G6P)` the upstream DSL requires. Rate-constant references use upstream's
+> `E(NADP,G6P)` the upstream DSL requires. Rate-constant references use FRE's (EnzymeRates 0.5.0)
 > composition-semantic names (`K_NADP_E`, `koff_NADPH_E`, `k_EG6PNADP_to_ENADPHPGLn`,
 > …).
 
