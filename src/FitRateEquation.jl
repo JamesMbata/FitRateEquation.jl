@@ -12,14 +12,11 @@ using Pkg, ClusterManagers
 # are NOT carried — the Cha path uses cha_coord_bounds / cha_centered_logratio_loss /
 # cha_classify instead.
 include("core/data.jl")
-include("core/er_names.jl")
 include("core/mechbuild.jl")
 include("core/gauge.jl")
 
 export Dataset, load_dataset, read_corpus, dataset_from_corpus, nrows
 export gauge_param, free_params, build_params, analytic_kcat
-export legacy_param_name, er_fitted_params, er_parameters, er_rate_equation
-export er_dependent_param_exprs, er_raw_rate_polys, er_reactions, er_substrates
 export _mechanism_steps, _deadend_forms, _deadend_step, _mech, _SIGN_PENALTY
 
 include("enzyme_wiring.jl")

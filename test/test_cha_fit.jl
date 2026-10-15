@@ -86,7 +86,7 @@ end
         bp = build_params(mech, logθ; keq=keq)
         for i in 1:n
             cc = NamedTuple{Tuple(mets)}(Tuple(getfield(d.concs[i], s) for s in mets))
-            v = er_rate_equation(mech, cc, bp); o = d.rate[i]
+            v = EnzymeRates.rate_equation(mech, cc, bp); o = d.rate[i]
             if !isfinite(v) || v == 0 || sign(v) != sign(o)
                 pen += _SIGN_PENALTY
             else

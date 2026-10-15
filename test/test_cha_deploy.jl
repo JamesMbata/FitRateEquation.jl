@@ -1,6 +1,6 @@
 # Closed-form deploy inverse: cha_deploy_micro maps a Cha macro tuple back to the
 # mechanism's INDEPENDENT free-params (logθ aligned to free_params(mech)) such that
-# er_rate_equation(mech, .) reproduces ChaLaws.cha_rate_* to rtol 1e-9. This is the
+# EnzymeRates.rate_equation(mech, .) reproduces ChaLaws.cha_rate_* to rtol 1e-9. This is the
 # inverse of cha_macro_readoffs_* (cha_invert.jl): we round-trip a real micro point THROUGH
 # the macro tuple and back, and check the deployed rate matches the macro law absolutely.
 #
@@ -27,13 +27,13 @@ using FitRateEquation.ChaDeploy
         logθd = cha_deploy_micro(:G6PD, m, coords; keq=keq, koffQ=mac.koffQ,
                     release_rate=mac.koffQ, release_eq=mac.Km_NADPH_rev, kr=mac.kr)
         bp = build_params(m, logθd; keq=keq)
-        vsat = abs(er_rate_equation(m,
+        vsat = abs(EnzymeRates.rate_equation(m,
             NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:G6P) ? 1e-2 : 0.0 for s in mets)), bp))
         for conc in [(;NADP=5e-6,G6P=40e-6,NADPH=5e-6,PGLn=1e-4,ATP=1e-3),
                      (;NADP=2e-5,G6P=80e-6,NADPH=8e-6,PGLn=2e-4,ATP=5e-4)]
             cc = NamedTuple{Tuple(mets)}(Tuple(get(conc, s, 0.0) for s in mets))
             vref = ChaLaws.cha_rate_G6PD(mac; conc...)
-            vdep = er_rate_equation(m, cc, bp)
+            vdep = EnzymeRates.rate_equation(m, cc, bp)
             @test isapprox(vdep, vref; rtol=1e-9, atol=1e-9*vsat)
         end
     end
@@ -52,13 +52,13 @@ end
         logθd = cha_deploy_micro(:PGD, m, coords; keq=keq, koffQ=mac.koff,
                     release_rate=mac.koff, release_eq=mac.koff/mac.kon, kr=mac.kr)
         bp = build_params(m, logθd; keq=keq)
-        vsat = abs(er_rate_equation(m,
+        vsat = abs(EnzymeRates.rate_equation(m,
             NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:PGA) ? 1e-2 : 0.0 for s in mets)), bp))
         for conc in [(;NADP=5e-6,PGA=40e-6,Ru5P=1e-4,CO2=1e-4,NADPH=5e-6,ATP=1e-3),
                      (;NADP=2e-5,PGA=80e-6,Ru5P=2e-4,CO2=2e-4,NADPH=8e-6,ATP=5e-4)]
             cc = NamedTuple{Tuple(mets)}(Tuple(get(conc, s, 0.0) for s in mets))
             vref = ChaLaws.cha_rate_PGD(mac; conc...)
-            vdep = er_rate_equation(m, cc, bp)
+            vdep = EnzymeRates.rate_equation(m, cc, bp)
             @test isapprox(vdep, vref; rtol=1e-9, atol=1e-9*vsat)
         end
     end

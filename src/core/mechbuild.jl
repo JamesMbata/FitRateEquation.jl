@@ -108,7 +108,7 @@ end
 # Structural view of a built mechanism's elementary steps, in source order, with
 # metabolites/forms split out per side and each step's kinetic-group param index.
 function _mechanism_steps(mech)
-    rxns = er_reactions(mech)
+    rxns = EnzymeRates.reactions(mech)
     met_set = Set(EnzymeRates.metabolites(mech))
     # Representative step index for each kinetic group (the index its rate
     # constants are named after; see _group_param_symbols in EnzymeRates).

@@ -34,7 +34,7 @@ function _micro_values(mech, logθ; keq::Real)
     p = build_params(mech, logθ; keq=keq)
     vals = Dict{Symbol,Float64}()
     for s in keys(p); vals[s] = float(getfield(p, s)); end
-    dep_exprs, _ = er_dependent_param_exprs(mech)
+    dep_exprs, _ = EnzymeRates._dependent_param_exprs(typeof(mech))
     for (sym, expr) in dep_exprs
         vals[sym] = _eval_expr(expr, vals)
     end
@@ -71,7 +71,7 @@ end
 "Gauged denominator coefficients keyed by concentration-monomial (Vector{Pair}).
  Each value is the numeric coefficient at θ divided by the constant (gauge) term."
 function gauged_denominator_coeffs(mech, logθ; keq::Real)
-    _, den = er_raw_rate_polys(mech)
+    _, den = EnzymeRates._raw_symbolic_rate_polys(typeof(mech))
     metset = Set(EnzymeRates.metabolites(mech))
     vals = _micro_values(mech, logθ; keq=keq)
     bins = Dict{Vector{Pair{Symbol,Int}}, Float64}()

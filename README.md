@@ -43,20 +43,23 @@ README use, since it's copy-pasteable either way.
 
 ## 3. Install the package
 
-Run the following commands at the `julia>` prompt:
+Run the following two commands at the `julia>` prompt:
 
 ```julia
 using Pkg
+Pkg.add(url="https://github.com/DenisTitovLab/EnzymeRates.jl")
 Pkg.add(url="https://github.com/JamesMbata/FitRateEquation.jl")
 ```
 
-**What gets installed:** FitRateEquation.jl depends on another package,
-EnzymeRates.jl (0.9.1 or later 0.9.x), that does the low-level rate-equation
-algebra. EnzymeRates.jl is published in Julia's central package registry, so
-Julia finds and installs it automatically. FitRateEquation.jl itself is not in
-the registry, which is why it is added by its "git URL" (the web address of
-its code repository): `Pkg.add(url="...")` tells Julia "download and install
-the package that lives at this address" instead of looking it up by name.
+**Why two commands?** FitRateEquation.jl depends on another package,
+EnzymeRates.jl, that does the low-level rate-equation algebra. EnzymeRates.jl
+isn't published in Julia's central package registry (the way most packages
+are), so Julia can't find it automatically — you have to tell it exactly
+where to get it. A "git URL" here is just the web address of the code
+repository; `Pkg.add(url="...")` tells Julia "download and install the
+package that lives at this address" instead of looking it up by name in the
+registry. Install EnzymeRates.jl first, then FitRateEquation.jl, in that
+order.
 
 ## 4. Quickstart
 
@@ -259,10 +262,10 @@ julia --project bin/fitrateequation g6pd --smoke
 ## 9. Troubleshooting
 
 **`Pkg.add(url=...)` for FitRateEquation.jl fails, or complains it can't find
-EnzymeRates:** run `Pkg.Registry.update()` so your copy of the general registry
-knows EnzymeRates 0.9.1, then retry. If your environment already holds an older
-EnzymeRates installed by URL, remove it first (`Pkg.rm("EnzymeRates")`):
-FitRateEquation.jl requires EnzymeRates 0.9.x.
+EnzymeRates:** make sure you ran the EnzymeRates.jl `Pkg.add(url=...)`
+command *first*, as a separate step (see [Install the
+package](#3-install-the-package)). EnzymeRates.jl is not in the general
+registry, so Julia cannot resolve it automatically as a dependency.
 
 **Julia complains about your Julia version, or something doesn't precompile:**
 FitRateEquation.jl requires **Julia 1.11 or later**. Run `julia --version` in

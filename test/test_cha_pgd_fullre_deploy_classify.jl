@@ -32,13 +32,13 @@ _p3_with_rates(d, r) = Dataset(d.concs, collect(float.(r)), d.group, d.keq)
         coords = Dict(s => getfield(mac, s) for s in coord_syms)
         logθd = cha_deploy_micro(:PGD, m, coords; keq=keq, variant=:full_re)
         bp = build_params(m, logθd; keq=keq)
-        vsat = abs(er_rate_equation(m,
+        vsat = abs(EnzymeRates.rate_equation(m,
             NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:PGA) ? 1e-2 : 0.0 for s in mets)), bp))
         for conc in [(;NADP=5e-6,PGA=40e-6,Ru5P=1e-4,CO2=1e-4,NADPH=5e-6,ATP=1e-3),
                      (;NADP=2e-5,PGA=80e-6,Ru5P=2e-4,CO2=2e-4,NADPH=8e-6,ATP=5e-4)]
             cc = NamedTuple{Tuple(mets)}(Tuple(get(conc, s, 0.0) for s in mets))
             vref = cha_rate_PGD_fullRE(mac; conc...)
-            vdep = er_rate_equation(m, cc, bp)
+            vdep = EnzymeRates.rate_equation(m, cc, bp)
             @test isapprox(vdep, vref; rtol=1e-9, atol=1e-9*vsat)
         end
     end
@@ -131,12 +131,12 @@ _p3_fullre_mech() = (vs = FitRateEquation.consensus_variants(:PGD);
         coords = Dict(s => getfield(mac, s) for s in cha_coords(:PGD, :full_re))   # 6 core only
         logθd = cha_deploy_micro(:PGD, m, coords; keq=keq, variant=:full_re)
         bp = build_params(m, logθd; keq=keq)
-        vsat = abs(er_rate_equation(m,
+        vsat = abs(EnzymeRates.rate_equation(m,
             NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:PGA) ? 1e-2 : 0.0 for s in mets)), bp))
         for conc in [(;NADP=5e-6,PGA=40e-6,Ru5P=1e-4,CO2=1e-4,NADPH=5e-6),
                      (;NADP=2e-5,PGA=80e-6,Ru5P=2e-4,CO2=2e-4,NADPH=8e-6)]
             cc = NamedTuple{Tuple(mets)}(Tuple(get(conc, s, 0.0) for s in mets))
-            @test isapprox(er_rate_equation(m, cc, bp),
+            @test isapprox(EnzymeRates.rate_equation(m, cc, bp),
                            cha_rate_PGD_fullRE(mac; conc...); rtol=1e-9, atol=1e-9*vsat)
         end
     end

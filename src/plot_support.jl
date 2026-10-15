@@ -109,9 +109,6 @@ function EnzymeRates.rate_equation(a::ChaAdapter, concs, params)
     return ratefn(m; ChaFit._cha_row_kwargs(a.enzyme, concs)...)
 end
 
-# The adapter evaluates the Cha closed form (no upstream parameter names to translate).
-er_rate_equation(a::ChaAdapter, concs, params::NamedTuple) = EnzymeRates.rate_equation(a, concs, params)
-
 "Build a ChaAdapter for one (variant, mode). Curves are drawn at the DEPLOY release rate;
 keq is supplied per figure by the renderer (:Apparent_Keq path). `default_keq` is only a
 fallback for a caller that passes no Keq."

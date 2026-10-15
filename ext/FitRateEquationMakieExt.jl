@@ -104,7 +104,7 @@ function plot_fit_on_data(
             for row in eachrow(fig_data)
                 concs = NamedTuple{MetNames}(Tuple(row[col] for col in MetNames))
                 params_pt = keq_is_col ? _params_for(row[Keq]) : params_full
-                pred = FitRateEquation.er_rate_equation(mechanism, concs, params_pt)
+                pred = EnzymeRates.rate_equation(mechanism, concs, params_pt)
                 if row.Rate != 0.0 && sign(pred) == sign(row.Rate) && pred != 0.0
                     push!(log_ratios, log(pred / row.Rate))
                 end
@@ -168,7 +168,7 @@ function plot_fit_on_data(
                 concs = NamedTuple{MetNames}(Tuple(
                     m == x_axis_metabolite ? x : combo_row[m] for m in MetNames
                 ))
-                FitRateEquation.er_rate_equation(mechanism, concs, series_params) * abs_scale / fig_vmax
+                EnzymeRates.rate_equation(mechanism, concs, series_params) * abs_scale / fig_vmax
             end
 
             # Legend label from changing metabolite concentrations

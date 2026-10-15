@@ -58,13 +58,13 @@ using FitRateEquation: g6pd_config
 
         # Forward, single-substrate-limited point: positive, finite rate.
         concs = (NADP = 1e-4, G6P = 1e-3, NADPH = 0.0, PGLn = 0.0, ATP = 0.0)
-        v = er_rate_equation(a, concs, (Keq = 43.743, E_total = 1.0))
+        v = EnzymeRates.rate_equation(a, concs, (Keq = 43.743, E_total = 1.0))
         @test isfinite(v) && v > 0.0
 
         # FORWARD rate is keq-independent (kr does not enter when products=0), so a
         # different params.Keq gives the SAME forward rate -- even though params.Keq is
         # now honored (see the reverse-arm subtest below).
-        v2 = er_rate_equation(a, concs, (Keq = 1.0, E_total = 99.0))
+        v2 = EnzymeRates.rate_equation(a, concs, (Keq = 1.0, E_total = 99.0))
         @test v2 == v
 
         # Deploy release_rate (1e3) is baked in: forward rate matches a direct cha_rate
@@ -81,8 +81,8 @@ using FitRateEquation: g6pd_config
         # from params.Keq) enters, so different params.Keq -> different rate, and each
         # matches a tuple rebuilt at that keq. This is the whole point of the fix.
         rev = (NADP = 0.0, G6P = 0.0, NADPH = 1e-4, PGLn = 1e-4, ATP = 0.0)
-        vA = er_rate_equation(a, rev, (Keq = 43.743, E_total = 1.0))
-        vB = er_rate_equation(a, rev, (Keq = 20.0,   E_total = 1.0))
+        vA = EnzymeRates.rate_equation(a, rev, (Keq = 43.743, E_total = 1.0))
+        vB = EnzymeRates.rate_equation(a, rev, (Keq = 20.0,   E_total = 1.0))
         @test vA < 0.0 && vB < 0.0            # pure-reverse -> negative net rate
         @test vA != vB                        # kr tracks params.Keq (per-figure)
         mB = FitRateEquation.ChaFit.cha_macro_tuple(:G6PD, coords;
@@ -104,7 +104,7 @@ using FitRateEquation: g6pd_config
         @test Set(EnzymeRates.metabolites(a)) == Set([:NADP,:PGA,:Ru5P,:CO2,:NADPH,:ATP])
 
         concs = (NADP = 3e-5, PGA = 2e-4, Ru5P = 0.0, CO2 = 0.0, NADPH = 0.0, ATP = 0.0)
-        v = er_rate_equation(a, concs, (Keq = 0.17, E_total = 1.0))
+        v = EnzymeRates.rate_equation(a, concs, (Keq = 0.17, E_total = 1.0))
         @test isfinite(v) && v > 0.0
         # Matches a direct cha_rate_PGD_fullRE call at the DEPLOY-fiber full_re macro tuple.
         m_ref = FitRateEquation.ChaFit.cha_macro_tuple(:PGD, coords;
@@ -118,7 +118,7 @@ using FitRateEquation: g6pd_config
         cb = Dict(:Kd_NADP=>3e-6, :Kd_PGA=>1.5e-5, :alpha=>2.0, :Kd_CO2=>1e-4,
                   :Ki_NADPH=>1.7e-5, :Ki_ATP=>1.7e-3, :Ki_ATP_EN=>1e-6, :Km_NADPH_rev=>2e-5)
         acb = FitRateEquation.build_cha_adapter(:PGD, cb, :cha_base, 0.17)
-        vcb = er_rate_equation(acb, concs, (Keq = 0.17, E_total = 1.0))
+        vcb = EnzymeRates.rate_equation(acb, concs, (Keq = 0.17, E_total = 1.0))
         mcb = FitRateEquation.ChaFit.cha_macro_tuple(:PGD, cb;
                     keq = 0.17, release_rate = FitRateEquation.ChaFit.CHA_DEPLOY_RELEASE_RATE,
                     variant = :cha_base)
