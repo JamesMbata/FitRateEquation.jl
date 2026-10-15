@@ -71,12 +71,12 @@ for v in _DEADEND_VARIANTS
             mac  = ChaInvert.cha_macro_readoffs_G6PD(m, logθ; keq=keq)
             v.has_nadph  || @test isinf(mac.Ki_NADPH)
             v.has_atp_eg || @test isinf(mac.Ki_ATP_EG)
-            vsat = abs(EnzymeRates.rate_equation(m,
+            vsat = abs(er_rate_equation(m,
                 NamedTuple{Tuple(mets)}(Tuple(s in (:NADP,:G6P) ? 1e-2 : 0.0 for s in mets)),
                 build_params(m, logθ; keq=keq)))
             for conc in _GRID
                 cc = NamedTuple{Tuple(mets)}(Tuple(getfield(conc, s) for s in mets))
-                vref = EnzymeRates.rate_equation(m, cc, build_params(m, logθ; keq=keq))
+                vref = er_rate_equation(m, cc, build_params(m, logθ; keq=keq))
                 vcha = ChaLaws.cha_rate_G6PD(mac; conc...)
                 scale = max(abs(vref), abs(vcha), 1e-6 * vsat)
                 maxrel = max(maxrel, abs(vcha - vref) / scale)
@@ -140,7 +140,7 @@ for v in _DEADEND_VARIANTS
         for conc in [(; NADP=5e-6, G6P=40e-6, NADPH=0.0, PGLn=0.0, ATP=0.0),
                      (; NADP=1e-5, G6P=80e-6, NADPH=4e-6, PGLn=1e-4, ATP=5e-4)]
             cc = NamedTuple{Tuple(mets)}(Tuple(getfield(conc, s) for s in mets))
-            vref = EnzymeRates.rate_equation(m, cc, p)
+            vref = er_rate_equation(m, cc, p)
             vcha = ChaLaws.cha_rate_G6PD(mac; conc...)
             @test isapprox(vref, vcha; rtol=1e-9, atol=1e-30)
         end

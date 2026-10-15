@@ -9,7 +9,7 @@ using Test
 # only de-conflation route is a DECOUPLED forward symbol (V3), not more SS steps.
 @testset "REC-4: V2 [NADPH] coeff and reverse Km_NADPH share the NADPH-release symbol" begin
     v2 = FitRateEquation.consensus_variants(:PGD)[2].mech
-    _, den = EnzymeRates._raw_symbolic_rate_polys(typeof(v2))
+    _, den = er_raw_rate_polys(v2)
     metset = Set(EnzymeRates.metabolites(v2))
     # The bare-[NADPH]^1 denominator monomials (exactly one concentration symbol: NADPH).
     bare_nadph = [mono for mono in keys(den)

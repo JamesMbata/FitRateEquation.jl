@@ -4,6 +4,7 @@ using Test
     include("test_data_path.jl")
     include("test_data.jl")
     include("test_schema_validation.jl")
+    include("test_enzymerates_names.jl")
     include("test_mechanisms.jl")
     include("test_cv.jl")
     include("test_promotable.jl")

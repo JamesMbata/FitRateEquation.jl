@@ -5,11 +5,11 @@ using Test, FitRateEquation, EnzymeRates
         free = free_params(m); logθ = -3 .+ 2 .* rand(length(free)); keq = 0.079
         concs = NamedTuple{Tuple(EnzymeRates.metabolites(m))}(
             Tuple(rand()*1e-3 for _ in EnzymeRates.metabolites(m)))
-        num, den = EnzymeRates._raw_symbolic_rate_polys(typeof(m))
+        num, den = er_raw_rate_polys(m)
         vals = FitRateEquation._micro_values(m, logθ; keq=keq)
         vnum = FitRateEquation._eval_poly(num, concs, vals)
         vden = FitRateEquation._eval_poly(den, concs, vals)
-        vref = EnzymeRates.rate_equation(m, concs, build_params(m, logθ; keq=keq))
+        vref = er_rate_equation(m, concs, build_params(m, logθ; keq=keq))
         @test isapprox(vnum / vden, vref; rtol=1e-6)
     end
 end

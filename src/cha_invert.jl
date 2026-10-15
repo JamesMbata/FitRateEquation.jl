@@ -33,8 +33,8 @@ export cha_macro_readoffs_G6PD, cha_micro_from_macro_G6PD
 # (k5f, k7f, K6) to composition-semantic (k_EG6PNADP_to_ENADPHPGLn, koff_NADPH_E, K_PGLn_ENADPH),
 # so we identify each by pattern rather than constructing `k<idx>f`. fitted_params holds the
 # independents; the Haldane-reverse chemistry rate is a DEPENDENT param (via _dependent_param_exprs).
-_cha_all_ksyms(m) = vcat(collect(EnzymeRates.fitted_params(m)),
-                         [s for (s, _) in EnzymeRates._dependent_param_exprs(typeof(m))[1]])
+_cha_all_ksyms(m) = vcat(collect(FitRateEquation.er_fitted_params(m)),
+                         [s for (s, _) in FitRateEquation.er_dependent_param_exprs(m)[1]])
 _is_kto(s) = (t = String(s); startswith(t, "k_") && occursin("_to_", t))   # chemistry k_<from>_to_<to>
 _ktoks(s)  = split(String(s), "_")                                          # K_<met>_<form> tokens
 function _only_sym(pool, pred, what)
@@ -49,7 +49,7 @@ _opt_sym(pool, pred) = (h = filter(pred, pool); isempty(h) ? nothing : first(h))
 # `koff_*`/`kon_*`), (c) the PGLn RE-binding K (`K_PGLn_*`), and (d) the ATP dead-end on E·G6P
 # (`K_ATP..._*G6P*`; nothing for the ATP-free mechanism).
 function _g6pd_cha_symbols(m)
-    fp   = collect(EnzymeRates.fitted_params(m))
+    fp   = collect(FitRateEquation.er_fitted_params(m))
     allk = _cha_all_ksyms(m)
     kf_sym    = gauge_param(m)
     kr_sym    = _only_sym(allk, s -> _is_kto(s) && s != kf_sym, "reverse chemistry rate")
@@ -125,7 +125,7 @@ export cha_macro_readoffs_PGD_fullRE
 # (d) the bare-[NADPH] reverse-release Km (`K_NADPH_*` on the FREE enzyme, form token "E",
 # distinct from the E·PGA NADPH dead-end); (e) the ATP dead-end on E·NADP (`K_ATP..._*NADP*`).
 function _pgd_cha_symbols(m)
-    fp   = collect(EnzymeRates.fitted_params(m))
+    fp   = collect(FitRateEquation.er_fitted_params(m))
     allk = _cha_all_ksyms(m)
     kf_sym   = gauge_param(m)
     kr_sym   = _only_sym(allk, s -> _is_kto(s) && s != kf_sym, "reverse chemistry rate")
