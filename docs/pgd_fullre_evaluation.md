@@ -11,6 +11,15 @@ CO₂ → Ru5P → NADPH**. Because NADPH releases last it re-binds free E first
 > `FitRateEquation.jl`. Nothing is written into `PentosePhosphatePathway.jl`; `deploy_variant(:PGD)`
 > stays `:cha_base`. See the Deployment note.
 
+> **Stale corpus (2026-10-21).** Every number below was produced on the **pre-correction**
+> 436-row PGD corpus. The bundled `data/PGD_EnzymeData_with_CO2.csv` has since been replaced
+> by the source-checked 400-row / 21-figure corpus (PPP_Experiments `5d17a23e`): Weisz 1985
+> Fig 6A–6D `[CO2]` ×10 (5.5–22 mM), Fig 6C/6D `[6PGA]` ×10, the duplicate Ceyhan 2005 Fig 7 and
+> Pearse 1973 Fig 13 replots removed, Cottreau Fig 13 fixed concentrations and temperature
+> corrected, and per-row apparent Keq recomputed (0.079 / 0.1069 / 0.1606 M at 25 / 30 / 37 °C).
+> The fitted constants, CV figures and the Weisz 6A–6D discussion have **not** been re-run;
+> treat them as historical until they are.
+
 ## Setup
 
 - **Corpus:** the PGD kinetic corpus — **436 rows / 23 articles** (`load_dataset(pgd_config())`);

@@ -184,7 +184,9 @@ budget:
   bound (the corpus lacks sub-Km [PGA] coverage), so the apparent Km is anchored, not
   recovered. The high/unstable PGD leave-one-article-out CV traces to a
   **forward-CO₂ product-inhibition coverage gap** (the leave-Weisz1985-out fold);
-  trimmed CV ≈ G6PD's.
+  trimmed CV ≈ G6PD's. *This diagnosis predates the 2026-10-21 corpus correction,
+  which raised Weisz 1985 Fig 6A–6D `[CO2]` 10× (and 6C/6D `[6PGA]` 10×); it has not
+  been re-run on the corrected corpus.*
 
 > **Topology is FROZEN.** Do not add SS release steps to chase the forward
 > `Ki_NADPH` — proven inert (the shared symbol + corpus geometry is the blocker, not
@@ -523,6 +525,8 @@ ext/FitRateEquationMakieExt.jl
                        (plot_consensus_fit), loads only when CairoMakie is loaded
 
 data/                  bundled corpora: G6PD_all_EnzymeData.csv, PGD_EnzymeData_with_CO2.csv
+                       (PGD: byte copy of PPP_Experiments fitting/PGD/ at 5d17a23e,
+                       400 rows / 21 figures)
 bin/fitrateequation    CLI entry point (using FitRateEquation; cli_main(ARGS))
 test/                  regression suite (runtests.jl); test/fixtures/ holds the byte-identity
                        smoke references (see above)
