@@ -67,8 +67,13 @@ v2_mechanism() = _wiring(:G6PD).variants[2].mech
 # Back-compat: `pin_table(variant)` (exported) resolves against G6PD.
 pin_table(variant::Symbol) = _pin_table(:G6PD, variant)
 
-# Per-enzyme (and -variant) fit-mode set. G6PD's forward constants are flux-healthy (2 modes:
-# free + literature-pinned). PGD adds a 3rd mode for the Km_PGA physiology override.
-modes_for(enzyme::Symbol, variant::Symbol=:_deploy) =
-    enzyme === :PGD ? (:mode1, :mode2, :mode3) :
-    (:mode1, :mode2)
+# Per-(enzyme, variant) fit-mode set: Mode 1 (free) + Mode 2 (literature-pinned). Mode 2 runs
+# only when it pins something Mode 1 does not -- otherwise it is a redundant refit with identical
+# pins (e.g. PGD :full_re carries no forward Ki_NADPH coord to pin). Resolved at the default
+# anchor_reverse/extra/scale: the pins Mode 2 adds are forward Ki's those settings never touch.
+# PGD's Mode 3 (the Km_PGA override) was retired 2026-10-21.
+function modes_for(enzyme::Symbol, variant::Symbol=:_deploy)
+    p1 = keys(ChaFit.resolve_cha_pins(enzyme, variant, :mode1))
+    p2 = keys(ChaFit.resolve_cha_pins(enzyme, variant, :mode2))
+    issubset(p2, p1) ? (:mode1,) : (:mode1, :mode2)
+end

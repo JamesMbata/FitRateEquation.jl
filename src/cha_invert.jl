@@ -123,7 +123,8 @@ export cha_macro_readoffs_PGD_fullRE
 # (a) catalysis kf (unique `k_*_to_*` = gauge) + Haldane reverse kr (the other `k_*_to_*`);
 # (b) the SS Ru5P-release koff/kon (unique `koff_*`/`kon_*`); (c) CO2-release binding (`K_CO2_*`);
 # (d) the bare-[NADPH] reverse-release Km (`K_NADPH_*` on the FREE enzyme, form token "E",
-# distinct from the E·PGA NADPH dead-end); (e) the ATP dead-end on E·NADP (`K_ATP..._*NADP*`).
+# distinct from the E·PGA NADPH dead-end); (e) the ATP dead-end on E·NADP (`K_ATP..._*NADP*`),
+# `nothing` on the ATP-free :no_atp mechanism.
 function _pgd_cha_symbols(m)
     fp   = collect(FitRateEquation.er_fitted_params(m))
     allk = _cha_all_ksyms(m)
@@ -135,8 +136,8 @@ function _pgd_cha_symbols(m)
                          "CO2 binding K")
     nadphRev_sym = _only_sym(fp, s -> (t = _ktoks(s); length(t) == 3 && t[1] == "K" &&
                              occursin("NADPH", t[2]) && t[3] == "E"), "NADPH reverse-release Km")
-    atpEN_sym = _only_sym(fp, s -> (t = _ktoks(s); length(t) == 3 && t[1] == "K" &&
-                          occursin("ATP", t[2]) && occursin("NADP", t[3])), "ATP-EN dead-end K")
+    atpEN_sym = _opt_sym(fp, s -> (t = _ktoks(s); length(t) == 3 && t[1] == "K" &&
+                         occursin("ATP", t[2]) && occursin("NADP", t[3])))
     (kf_sym, kr_sym, koff_sym, kon_sym, co2_sym, nadphRev_sym, atpEN_sym)
 end
 
@@ -159,8 +160,8 @@ function cha_macro_readoffs_PGD(m, logθ; keq::Real)
     Kd_NADP      = named[:Kd_NADP]      # = 1/g[NADP]
     Kd_PGA       = named[:Kd_PGA]       # = 1/g[PGA]
     Ki_NADPH     = named[:Ki_NADPH]     # = g[PGA]/g[PGA·NADPH] (forward dead-end cross term)
-    Ki_ATP       = named[:Ki_ATP]       # = 1/g[ATP] = K9 (ATP dead-end on free E)
-    Ki_ATP_EN    = vals[atpEN_sym]      # = K10 (ATP dead-end on E.NADP; distinct from Ki_ATP)
+    Ki_ATP       = get(named, :Ki_ATP, Inf)   # = 1/g[ATP] = K9 (ATP dead-end on free E); Inf for :no_atp
+    Ki_ATP_EN    = atpEN_sym === nothing ? Inf : vals[atpEN_sym]   # = K10 (ATP on E.NADP)
     Kd_CO2       = vals[co2_sym]        # = K6 (CO2-release RE binding constant)
     Km_NADPH_rev = vals[nadphRev_sym]   # = K8 (bare-[NADPH] reverse-release Km)
 

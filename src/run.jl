@@ -6,9 +6,8 @@
 # the pipeline runs ONLY the deploy variant per enzyme. Each cell is a (deploy_variant, mech,
 # mode); fitting optimizes the NAMED forward shape constants (cha_coords) directly through
 # `cha_rate_*` (ChaFit), classifies them in macro-coordinate space (ChaClassify), and deploys a
-# closed-form micro representative (ChaDeploy). Mode 2/3 anchor the product side to literature
-# via hard coord-pins (resolve_cha_pins) plus, for PGD Km_PGA, a soft/high-weight apparent-Km
-# anchor (cha_anchors -> ChaFit anchors). The pmap/CachingPool/per-cell-seed determinism
+# closed-form micro representative (ChaDeploy). Mode 2 anchors the product side to literature
+# via hard coord-pins (resolve_cha_pins). The pmap/CachingPool/per-cell-seed determinism
 # scaffolding (`seed+ci`, order-preserving reduce) is preserved byte-identical in STRUCTURE;
 # only the fit/loss/classify/deploy CALLS changed (coeff_* retired on this path; Task 16 deletes).
 
@@ -60,27 +59,10 @@ function _mech_for(enzyme::Symbol, variant::Symbol)
     error("_mech_for: variant $variant not found in consensus_variants($enzyme)")
 end
 
-# Per-(enzyme, mode) SOFT/OVERRIDE anchors on the DERIVED apparent Michaelis constants (the
-# Km_PGA gap; PGD only). Km_PGA is the apparent constant `alpha·Kd_PGA/C`, NOT a cha_coord, so
-# it can never be a hard pin — it is realized through the ChaFit `anchors` penalty:
-#   G6PD: nothing (all modes).
-#   PGD :mode1: nothing (unanchored data baseline).
-#   PGD :mode2: soft pull to the 38–80µM band midpoint (59µM, weight 1.0 — PROVISIONAL per
-#               spec §11 / open item T1-a; resolved against the Phase-C flux gate).
-#   PGD :mode3: the explicit Km_PGA "hard override" realized as a HIGH-weight anchor (38µM,
-#               weight 100.0) — because Km_PGA cannot be a hard coord-pin.
-function cha_anchors(enzyme::Symbol, mode::Symbol)
-    enzyme === :PGD || return nothing
-    mode === :mode2 && return Dict(:Km_PGA => (target = log10(59e-6), weight = 1.0))
-    mode === :mode3 && return Dict(:Km_PGA => (target = log10(38e-6), weight = 100.0))
-    return nothing                                   # :mode1 (and any other) is unanchored
-end
-
-# One (variant, mode) cell fit + leave-one-article-out CV, via the Cha path. Mode 2/3 hard-pin
-# the literature coords (resolve_cha_pins) and, for PGD, soft/override-anchor Km_PGA (the
-# DERIVED apparent constant, via `anchors`). Mode 1 fits free over the always-anchored reverse
-# coords only. Fit the macro coords, then CV with the same pins/anchors. (Used by tests; the
-# pmap path threads the same pins/anchors per cell.)
+# One (variant, mode) cell fit + leave-one-article-out CV, via the Cha path. Mode 2 hard-pins
+# the literature coords (resolve_cha_pins); Mode 1 fits free over the always-anchored reverse
+# coords only. Fit the macro coords, then CV with the same pins. (Used by tests; the pmap path
+# threads the same pins per cell.)
 function _fit_and_cv(variant::Symbol, mech, d::Dataset;
                      mode::Symbol=:mode2, n_restarts::Int=8, maxiter::Int=1_000_000,
                      maxtime::Real=20.0, seed::Int=1, enzyme::Symbol=_enzyme_of(mech),
@@ -89,21 +71,20 @@ function _fit_and_cv(variant::Symbol, mech, d::Dataset;
     keq     = nothing
     pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
                                       extra=extra_pins, scale=scale)
-    anchors = cha_anchors(enzyme, mode)
     fit = ChaFit.cha_fit_candidate(enzyme, mech, d; n_restarts=n_restarts, maxiter=maxiter,
                                    maxtime=maxtime, seed=seed, keq=keq, pins=pins,
-                                   anchors=anchors, variant=variant, scale=scale)
+                                   variant=variant, scale=scale)
     cv  = _cha_loocv(enzyme, mech, d; n_restarts=n_restarts, maxiter=maxiter, maxtime=maxtime,
-                     seed=seed, keq=keq, pins=pins, anchors=anchors, variant=variant, scale=scale)
-    (variant=variant, mode=mode, mech=mech, pins=pins, anchors=anchors, fit=fit, cv=cv)
+                     seed=seed, keq=keq, pins=pins, variant=variant, scale=scale)
+    (variant=variant, mode=mode, mech=mech, pins=pins, fit=fit, cv=cv)
 end
 
 # Leave-one-article-out CV in Cha macro-coordinate space (the twin of loocv_by_article): each
-# fold refits the cha_coords on the train rows (same pins/anchors), then scores the held-out
+# fold refits the cha_coords on the train rows (same pins), then scores the held-out
 # article with cha_centered_logratio_loss at the train-fit coords.
 function _cha_loocv(enzyme::Symbol, mech, d::Dataset; n_restarts::Int,
                     maxiter::Int, maxtime::Real, seed::Int, keq::Union{Nothing,Real},
-                    pins::Dict{Symbol,Float64}, anchors, variant::Symbol=:_deploy,
+                    pins::Dict{Symbol,Float64}, variant::Symbol=:_deploy,
                     scale::Symbol=:relative)
     per = NamedTuple[]
     folds0 = scale === :absolute ? _group_folds(d) : _article_folds(d)
@@ -112,7 +93,7 @@ function _cha_loocv(enzyme::Symbol, mech, d::Dataset; n_restarts::Int,
         dtr = _subset(d, fold.train); dte = _subset(d, fold.test)
         fit = ChaFit.cha_fit_candidate(enzyme, mech, dtr; n_restarts=n_restarts, maxiter=maxiter,
                                        maxtime=maxtime, seed=seed, keq=keq, pins=pins,
-                                       anchors=anchors, variant=variant, scale=scale)
+                                       variant=variant, scale=scale)
         push!(per, (article=fold.article,
                     loss=ChaFit.cha_score_loss(enzyme, mech, dte, fit.coords; keq=keq, variant=variant, scale=scale)))
     end
@@ -147,9 +128,10 @@ end
 
 # The (deploy_variant × per-enzyme-modes) cell list. The Cha law is the PROMOTED law, so the
 # pipeline runs ONLY the deploy variant per enzyme (the pure-RE variant is its release-rate->inf
-# limit). G6PD = 1 variant × 2 modes = 2 cells; PGD = 1 variant × 3 modes = 3 cells. Order is
-# the canonical reduction order, so any code that groups task results by `ci` reproduces the
-# serial cell sequence.
+# limit). G6PD and PGD = 1 variant × 2 modes = 2 cells (`modes_for` drops Mode 2 for a variant
+# where it adds no pin beyond Mode 1, e.g. PGD :full_re = 1 cell). Order is the canonical
+# reduction order, so any code that groups task results by `ci` reproduces the serial cell
+# sequence.
 _cells(enzyme::Symbol=:G6PD; variants::Vector{Symbol}=run_variants(enzyme)) =
     [(v, _mech_for(enzyme, v), mode)
      for v in variants for mode in modes_for(enzyme, v)]
@@ -158,6 +140,9 @@ _cells(enzyme::Symbol=:G6PD; variants::Vector{Symbol}=run_variants(enzyme)) =
 #   Row filter for the ATP-free fit: drop any row carrying ATP (ATP > 0). The :no_atp law
 #   is ATP-blind, so ATP-inhibited rows would become forced-misfit residuals biasing the
 #   core constants. Wired to the :no_atp G6PD variant via `variant_profile` as its `row_filter`.
+#   (PGD :no_atp deliberately keeps ATP rows: there the ATP-free law IS the hypothesis under test,
+#   "ATP does not inhibit PGD", so ATP-bearing rows are the evidence for or against it. The
+#   bundled PGD corpus has none, so this matters only for a user corpus with ATP via data_csv.)
 #
 #   Row filters operate on the canonical corpus DataFrame (read_corpus's output), NOT on
 #   the Dataset, so the rows that survive are exactly the rows snapshotted to
@@ -175,12 +160,13 @@ end
 function variant_profile(enzyme::Symbol, variant::Symbol)
     enzyme === :G6PD && variant === :no_atp  && return (row_filter=drop_atp_rows, label="noatp")
     enzyme === :PGD  && variant === :full_re && return (row_filter=identity,      label="fullre")
+    enzyme === :PGD  && variant === :no_atp  && return (row_filter=identity,      label="noatp")
     return (row_filter=identity, label="")
 end
 
 # Flat list of independent fit-tasks across all cells: one `:main` per cell, then one
 # `:fold` per article fold of that cell, in `_article_folds(d)` order. Each task is a
-# small descriptor carrying only identity + row-index subsets + the resolved pins/anchors; the
+# small descriptor carrying only identity + row-index subsets + the resolved pins; the
 # Dataset and mechanisms travel once via the CachingPool, not per task. Seed is a pure
 # function of cell identity (`seed + ci`) — exactly the `_fit_and_cv` scheme, where the main
 # fit and every fold of a cell share that one seed — so it is independent of worker count and
@@ -196,15 +182,14 @@ function _build_tasks(cells, d::Dataset; seed::Int=1, enzyme::Symbol=:G6PD, anch
     allrows = collect(1:nrows(d))
     tasks = NamedTuple[]
     for (ci, (variant, mech, mode)) in enumerate(cells)
-        pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
-                                          extra=extra_pins, scale=scale)
-        anchors = cha_anchors(enzyme, mode)
+        pins = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
+                                       extra=extra_pins, scale=scale)
         s = seed + ci
         push!(tasks, (ci=ci, variant=variant, mode=mode, kind=:main, article="",
-                      seed=s, train_idx=allrows, test_idx=Int[], pins=pins, anchors=anchors))
+                      seed=s, train_idx=allrows, test_idx=Int[], pins=pins))
         for fold in folds
             push!(tasks, (ci=ci, variant=variant, mode=mode, kind=:fold, article=fold.article,
-                          seed=s, train_idx=fold.train, test_idx=fold.test, pins=pins, anchors=anchors))
+                          seed=s, train_idx=fold.train, test_idx=fold.test, pins=pins))
         end
     end
     tasks
@@ -213,7 +198,7 @@ end
 # Worker-pure: run one fit-task and return only what the master needs to reduce. Selects
 # the mechanism by variant from the captured `mechs` (EnzymeMechanism serializes fine, so
 # it is shipped via the pool, not rebuilt). Fits the macro COORDINATES over the task's pins
-# + anchors via ChaFit. `:main` returns the cell's coord-fit; `:fold` scores the held-out
+# via ChaFit. `:main` returns the cell's coord-fit; `:fold` scores the held-out
 # article with `cha_centered_logratio_loss` at the train-fit coords — identical semantics to
 # `_cha_loocv` (macro-coord space).
 function _run_fit_task(t, d::Dataset, mechs; n_restarts::Int, maxiter::Int, maxtime::Real,
@@ -223,7 +208,7 @@ function _run_fit_task(t, d::Dataset, mechs; n_restarts::Int, maxiter::Int, maxt
     keq  = nothing
     fit  = ChaFit.cha_fit_candidate(enzyme, mech, dtr; n_restarts=n_restarts, maxiter=maxiter,
                                     maxtime=maxtime, seed=t.seed, keq=keq, pins=t.pins,
-                                    anchors=t.anchors, variant=t.variant, scale=scale)
+                                    variant=t.variant, scale=scale)
     if t.kind === :main
         (ci=t.ci, kind=:main, fit=fit)
     else
@@ -243,9 +228,8 @@ function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbo
     keq = median(d.keq)
     results = NamedTuple[]
     for (ci, (variant, mech, mode)) in enumerate(cells)
-        pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
-                                          extra=extra_pins, scale=scale)
-        anchors = cha_anchors(enzyme, mode)
+        pins = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
+                                       extra=extra_pins, scale=scale)
         mres = raw[findfirst(x -> x.ci == ci && x.kind === :main, raw)]
         fit  = mres.fit
         per  = [(article=x.article, loss=x.loss)
@@ -254,7 +238,7 @@ function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbo
         cv = (per_article=per,
               mean_cv = isempty(losses) ? NaN : mean(losses),
               se      = isempty(losses) ? 0.0 : std(losses)/sqrt(length(losses)))
-        r = (variant=variant, mode=mode, mech=mech, pins=pins, anchors=anchors, fit=fit, cv=cv)
+        r = (variant=variant, mode=mode, mech=mech, pins=pins, fit=fit, cv=cv)
         idf = ChaClassify.cha_identifiable_functions(enzyme, mech, d, r.fit.coords;
                     keq=nothing, pins=pins, variant=variant,
                     scale=scale)
@@ -437,10 +421,11 @@ _apparent_kms(enzyme::Symbol) =
     enzyme === :PGD  ? (:Km_PGA, :Km_NADP) :
     ()
 
-function _apparent_km_rows(enzyme::Symbol, coords::AbstractDict)
+function _apparent_km_rows(enzyme::Symbol, coords::AbstractDict, variant::Symbol)
     rows = NamedTuple[]
     for which in _apparent_kms(enzyme)
-        km = ChaFit.cha_apparent_km(enzyme, coords, which)   # at deploy koffQ -> deployed law
+        # At deploy koffQ -> deployed law; :full_re is fiber-free (C = 1).
+        km = ChaFit.cha_apparent_km(enzyme, coords, which; variant=variant)
         push!(rows, (name=which, value=km, class=:derived, ci=NaN))
         spec = ChaFit.cha_specificity(enzyme, coords, which)   # kcat/Km, koffQ-invariant
         push!(rows, (name=Symbol("kcatKm_", String(which)[4:end]),
@@ -486,7 +471,7 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
             push!(rows, (variant=res.variant, mode=res.mode, name=m.name,
                          value=m.value, class=m.class, ci=m.ci))
         end
-        for m in _apparent_km_rows(enzyme, res.r.fit.coords)
+        for m in _apparent_km_rows(enzyme, res.r.fit.coords, res.variant)
             push!(rows, (variant=res.variant, mode=res.mode, name=m.name,
                          value=m.value, class=m.class, ci=m.ci))
         end
@@ -563,7 +548,7 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
             for m in res.classed
                 println(io, "| $(m.name) | $(m.value) | $(m.class) | $(m.ci) |")
             end
-            for m in _apparent_km_rows(enzyme, res.r.fit.coords)
+            for m in _apparent_km_rows(enzyme, res.r.fit.coords, res.variant)
                 println(io, "| $(m.name) | $(m.value) | $(m.class) | $(m.ci) |")
             end
             # Absolute-mode turnover verdict: the fitted kcat against the 150–250 s⁻¹ band. A
@@ -576,14 +561,14 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
             end
             println(io)
         end
-        # Forward-constant agreement across modes over the classed cha_coords. PGD has 3 modes
-        # (mode1/2/3) → pairwise (1↔2, 1↔3, 2↔3); G6PD has 2 (mode1/2) → 1↔2. Only both-modes
+        # Forward-constant agreement across modes over the classed cha_coords (mode1 ↔ mode2;
+        # pairwise over whatever modes ran, so a single-mode variant prints no pairs). Only both-modes
         # `:data_identified` coords are compared; pinned/derived rows never enter mode_agreement
         # (class ≠ :data_identified), so an intended data-vs-physiology contrast is NOT mislabeled
         # a flatness WARNING.
         modes = unique(r.mode for r in results)
         mode_pairs = [(modes[i], modes[j]) for i in 1:length(modes) for j in (i+1):length(modes)]
-        println(io, "## Forward-constant agreement across modes\n")
+        isempty(mode_pairs) || println(io, "## Forward-constant agreement across modes\n")
         for (ma, mb) in mode_pairs
             println(io, "### $(ma) ↔ $(mb)\n")
             for variant in unique(r.variant for r in results)
@@ -603,7 +588,6 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
         end
         # Enzyme-specific resolved-decision blocks.
         enzyme === :G6PD && _write_g6pd_koffq_block(io, results, d, keq; anchor_reverse=anchor_reverse)
-        enzyme === :PGD  && _write_pgd_km_pga_block(io, results)
         print(io, _report_note(enzyme, results))
     end
 end
@@ -633,33 +617,6 @@ function _write_g6pd_koffq_block(io, results, d, keq; anchor_reverse::Bool=true)
     end
 end
 
-# PGD Km_PGA gap warning: the apparent Km_PGA in Mode 1 (unanchored — the corpus pulls it high)
-# vs the anchored Mode 2 readoff. Prints a LOUD warning quantifying the Mode-1-vs-anchored gap
-# (spec §6). Guarded.
-function _write_pgd_km_pga_block(io, results)
-    println(io, "## PGD Km_PGA gap (unanchored corpus vs literature anchor)\n")
-    try
-        i1 = findfirst(r -> r.mode === :mode1, results)
-        i2 = findfirst(r -> r.mode === :mode2, results)
-        (i1 === nothing || i2 === nothing) && error("missing Mode 1 or Mode 2 cell")
-        km1 = ChaFit.cha_apparent_km(:PGD, results[i1].r.fit.coords, :Km_PGA)
-        km2 = ChaFit.cha_apparent_km(:PGD, results[i2].r.fit.coords, :Km_PGA)
-        gap = log10(km1) - log10(km2)
-        println(io, "| quantity | value |\n|---|---|")
-        println(io, "| Km_PGA Mode 1 (unanchored) | $(km1) M |")
-        println(io, "| Km_PGA Mode 2 (anchored 59µM) | $(km2) M |")
-        println(io, "| gap (dex, Mode1 − Mode2) | $(gap) |\n")
-        println(io, "> **WARNING — Km_PGA is NOT data-identified in the forward corpus.** The ",
-                    "unanchored Mode-1 apparent Km_PGA (", round(km1*1e6; sigdigits=3), " µM) ",
-                    "differs from the literature-anchored Mode-2 value (",
-                    round(km2*1e6; sigdigits=3), " µM) by ", round(gap; sigdigits=3),
-                    " dex. The corpus pulls Km_PGA high (it lacks sub-Km [PGA] coverage); the ",
-                    "38–80 µM band is imposed via the anchor (Mode 2/3), not recovered from data.\n")
-    catch err
-        println(io, "> Km_PGA gap report unavailable ($(err))\n")
-    end
-end
-
 # Enzyme-specific closing note for report.md. PGD/G6PD: the forward-Ki de-conflation caveat
 # (the G6PD note reports the ACTUAL fitted Mode-1 cross-term Ki_NADPH — fit directly, not
 # hardcoded — at full budget the corpus reads it ABOVE the 9–24 µM literature band). Any other
@@ -669,7 +626,7 @@ function _report_note(enzyme::Symbol, results)
         "> **Forward `Ki_NADPH` de-conflation (PGD):** on the Cha law the forward product-\n",
         "> inhibition `Ki_NADPH` is read as the E·PGA dead-end cross term, decoupled from the\n",
         "> bare-[NADPH] reverse-release Km (`Km_NADPH_rev`). It is literature-pinned (Cottreau\n",
-        "> 17 µM) in Mode 2/3; Mode 1 reports it diagnostic/unconstrained (the forward-only\n",
+        "> 17 µM) in Mode 2; Mode 1 reports it diagnostic/unconstrained (the forward-only\n",
         "> cross-term de-conflation was refuted on the PGD corpus — pin-only 17 µM).\n",
         "> FROZEN: do not add SS steps to chase this (see test_rec4_topology_freeze.jl).\n")
     enzyme === :G6PD && return string(

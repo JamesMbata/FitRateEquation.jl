@@ -74,12 +74,11 @@ end
             @test f.test_idx == fold.test
         end
 
-        # Pins + anchors are the resolved Cha values, shared per cell. G6PD always-anchors
-        # the conflating reverse channel Km_NADPH_rev (ALL modes); Mode-2 additionally pins
-        # Ki_ATP + Ki_NADPH. G6PD carries NO Km_PGA anchor (that is PGD-only). The pmap path
-        # threads exactly these, so the reduction is worker-invariant.
+        # Pins are the resolved Cha values, shared per cell. G6PD always-anchors the
+        # conflating reverse channel Km_NADPH_rev (ALL modes); Mode-2 additionally pins
+        # Ki_ATP + Ki_NADPH. The pmap path threads exactly these, so the reduction is
+        # worker-invariant.
         @test m.pins == FitRateEquation.ChaFit.resolve_cha_pins(:G6PD, variant, mode)
-        @test m.anchors === FitRateEquation.cha_anchors(:G6PD, mode)   # nothing for G6PD
         @test haskey(m.pins, :Km_NADPH_rev)                           # always-anchored (all modes)
         if mode === :mode2
             @test haskey(m.pins, :Ki_ATP) && haskey(m.pins, :Ki_NADPH)
@@ -87,7 +86,6 @@ end
             @test Set(keys(m.pins)) == Set([:Km_NADPH_rev])           # Mode 1: only the reverse anchor
         end
         @test all(t.pins == m.pins for t in cell_tasks)
-        @test all(t.anchors === m.anchors for t in cell_tasks)
     end
 end
 

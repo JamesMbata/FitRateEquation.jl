@@ -5,7 +5,8 @@ using Test
 @testset "PGD mechanisms" begin
     vs = FitRateEquation.consensus_variants(:PGD)
     @test [v.name for v in vs] == [:RE_rate_eq, :SS_NADPH_release_rate_eq,
-                                   Symbol("+NADPH_deadend_rate_eq"), :cha_base, :full_re]
+                                   Symbol("+NADPH_deadend_rate_eq"), :cha_base, :full_re,
+                                   :no_atp]
     v1 = vs[1].mech; v2 = vs[2].mech
     mets1 = Set(EnzymeRates.metabolites(v1))
     for s in (:NADP, :PGA, :Ru5P, :CO2, :NADPH, :ATP)

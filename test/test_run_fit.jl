@@ -24,8 +24,6 @@ using Test
     for (k, v) in r2.pins
         @test isapprox(log10(r2.fit.coords[k]), v; atol=1e-6)
     end
-    # G6PD carries no Km_PGA anchor in any mode.
-    @test FitRateEquation.cha_anchors(:G6PD, :mode2) === nothing
     # Mode 1: only the always-anchored reverse channel (Km_NADPH_rev) is pinned; Ki_ATP free.
     r1 = FitRateEquation._fit_and_cv(variant, mech, d;
                                     mode=:mode1, n_restarts=2, maxiter=150, maxtime=5.0, seed=1)

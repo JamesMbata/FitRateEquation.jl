@@ -20,30 +20,25 @@ function config_for(enzyme::Symbol)
     error("config_for: unknown enzyme $enzyme (expected :G6PD or :PGD)")
 end
 
-"Detect the enzyme from a results path: the component directly under `fitting/`."
-# Fitted-variant → enzyme. As a standalone package, run dirs are arbitrary `outdir`s (no
-# `fitting/<ENZYME>/` path convention), so detect the enzyme from the run's own
-# macro_constants.csv `variant` column; fall back to the legacy path layout.
-const _VARIANT_TO_ENZYME = Dict(
-    "SS_NADPH_release_rate_eq" => :G6PD, "RE_rate_eq" => :G6PD, "no_atp" => :G6PD,
-    "no_g6p_nadph_deadend" => :G6PD, "no_g6p_atp_deadend" => :G6PD,
-    "no_g6p_both_deadends" => :G6PD,
-    "cha_base" => :PGD, "full_re" => :PGD,
-)
+# Substrate dissociation constant → enzyme. Every fitted variant of an enzyme carries its
+# substrate Kd as a cha_coord, while variant NAMES are not enzyme-unique (:no_atp exists for both).
+const _SUBSTRATE_KD_TO_ENZYME = Dict("Kd_G6P" => :G6PD, "Kd_PGA" => :PGD)
 
+"Detect the enzyme of a run dir from the substrate Kd in its macro_constants.csv; fall back to
+the legacy `fitting/<ENZYME>/` path layout."
 function detect_enzyme(results_dir::AbstractString)
     mc = joinpath(results_dir, "macro_constants.csv")
     if isfile(mc)
-        rows = readlines(mc)
-        for row in Iterators.drop(rows, 1)            # skip header
-            v = String(first(split(row, ',')))
-            haskey(_VARIANT_TO_ENZYME, v) && return _VARIANT_TO_ENZYME[v]
+        for row in Iterators.drop(readlines(mc), 1)   # skip header; columns variant,mode,name,...
+            f = split(row, ',')
+            length(f) >= 3 && haskey(_SUBSTRATE_KD_TO_ENZYME, f[3]) &&
+                return _SUBSTRATE_KD_TO_ENZYME[f[3]]
         end
     end
     # Fallback: legacy PPP_Experiments `fitting/<ENZYME>/` path layout.
     m = match(r"(?:^|/)fitting/([^/]+)/", normpath(abspath(results_dir)) * "/")
     m === nothing && error("detect_enzyme: cannot determine enzyme for $results_dir " *
-        "(no recognized variant in macro_constants.csv and no `fitting/<ENZYME>/` path segment)")
+        "(no Kd_G6P/Kd_PGA row in macro_constants.csv and no `fitting/<ENZYME>/` path segment)")
     enz = Symbol(m.captures[1])
     enz in (:G6PD, :PGD) ||
         error("detect_enzyme: unrecognized enzyme `$enz` under fitting/ in $results_dir")

@@ -90,6 +90,9 @@ function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy; scale::Symbol=:rel
             # is a real RE coord. Effector coords (:Ki_ATP/:Ki_ATP_EN/:Ki_NADPH) are appended by
             # the config only when the dead-ends are enabled (default OFF).
             [:Kd_NADP, :Kd_PGA, :alpha, :Kd_NADPH, :Kd_Ru5P, :Kd_CO2] :
+        variant === :no_atp ?
+            # ATP-free cha_base: both ATP dead-ends dropped (Ki_ATP, Ki_ATP_EN -> Inf).
+            [:Kd_NADP, :Kd_PGA, :alpha, :Kd_CO2, :Ki_NADPH, :Km_NADPH_rev] :
             [:Kd_NADP, :Kd_PGA, :alpha, :Kd_CO2, :Ki_NADPH, :Ki_ATP, :Ki_ATP_EN,
              :Km_NADPH_rev]
     else
@@ -192,8 +195,8 @@ function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
                   Kd_CO2    = coords[:Kd_CO2],
                   Km_NADPH_rev = coords[:Km_NADPH_rev],
                   Ki_NADPH  = coords[:Ki_NADPH],
-                  Ki_ATP    = coords[:Ki_ATP],
-                  Ki_ATP_EN = coords[:Ki_ATP_EN],
+                  Ki_ATP    = get(coords, :Ki_ATP,    Inf),   # Inf for :no_atp (term absent)
+                  Ki_ATP_EN = get(coords, :Ki_ATP_EN, Inf),
                   koff = koff, kon = kon, kf = kf, kr = krv, Et = Et,
                   Keq = keq)
     else
@@ -423,8 +426,7 @@ end
 #   1+kf/release_rate factor), so reporting it at any other release_rate -- e.g. the fit-fiber
 #   _default_release_rate(enzyme) -- yields a Km the deployed model does NOT exhibit (a factor
 #   ~2 at r=1 vs the catalysis-limited deploy). For the fiber-INVARIANT constant use
-#   `cha_specificity` (kcat/Km). The Mode-2/3 ANCHOR penalty also reads at this deploy fiber
-#   (see `_cha_anchor_penalty`), so it pulls the DEPLOYED apparent Km onto the literature target.
+#   `cha_specificity` (kcat/Km).
 # -----------------------------------------------------------------------------------------
 function cha_apparent_km(enzyme::Symbol, coords::AbstractDict, which::Symbol;
                          kf::Real = 1.0,
@@ -453,11 +455,8 @@ function cha_specificity(enzyme::Symbol, coords::AbstractDict, which::Symbol; kf
 end
 
 # Pins: override certain coordinates at fixed log10 values during the fit (Mode-2 twin of
-# _coeff_loss_with_pins, coeff_fit.jl). `anchors` carries soft-anchor targets on DERIVED
-# apparent Km's (Task 11): a Dict like `Dict(:Km_PGA => (target=<log10 M>, weight=<w>))`. The
-# penalty is STRICTLY ADDITIVE on top of the unchanged centered log-ratio base loss -- only
-# applied when `anchors` carries entries -- so anchors=nothing (or empty) is a perfect no-op.
-function _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
+# _coeff_loss_with_pins, coeff_fit.jl).
+function _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins;
                              keq::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy,
                              scale::Symbol=:relative)
     if !isempty(pins)
@@ -469,35 +468,12 @@ function _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
     coords_dict = Dict(coords_syms .=> 10 .^ u)
     if scale === :absolute
         # :kcat is a coord in absolute mode; pop it out of the binding-constant dict and pass
-        # it as kf at the fiber-free release rate (C=1). The anchor penalty reads only binding
-        # constants, so it stays on the popped dict.
+        # it as kf at the fiber-free release rate (C=1).
         kcat = pop!(coords_dict, :kcat)
-        L = cha_absolute_logratio_loss(enzyme, mech, d, coords_dict;
-                keq=keq, kf=kcat, release_rate=CHA_ABS_RELEASE_RATE, variant=variant)
-    else
-        L = cha_centered_logratio_loss(enzyme, mech, d, coords_dict; keq=keq, variant=variant)
+        return cha_absolute_logratio_loss(enzyme, mech, d, coords_dict;
+                   keq=keq, kf=kcat, release_rate=CHA_ABS_RELEASE_RATE, variant=variant)
     end
-    L += _cha_anchor_penalty(enzyme, coords_dict, anchors; variant=variant)
-    L
-end
-
-# Additive soft-anchor penalty on the apparent Michaelis constants. For each `which =>
-# (target, weight)` in `anchors`, adds weight*(log10(apparent_Km) - target)^2. anchors=nothing
-# (or empty) contributes EXACTLY 0.0 -- the base centered-loss arithmetic is untouched.
-function _cha_anchor_penalty(enzyme, coords_dict, anchors; variant::Symbol=:_deploy)
-    anchors === nothing && return 0.0
-    pen = 0.0
-    for (which, spec) in anchors
-        # Anchor on the DEPLOY fiber (CHA_DEPLOY_RELEASE_RATE -- the release rate the law is
-        # actually deployed at), so the penalty pulls the DEPLOYED apparent Km to `target`.
-        # (Through 2026-06-11 this read the FIT fiber `_default_release_rate`, which left the
-        # deployed apparent Km ~(C_fit/C_deploy)x the target -- ~2x for PGD Km_PGA. Re-anchored
-        # on the deploy fiber 2026-06-15 so a PGD consensus deploy lands Km_PGA on the literature
-        # band, not 2x it; this is a re-fit -- Mode-2/3 PGD results change, Mode-1 is unaffected.)
-        km = cha_apparent_km(enzyme, coords_dict, which; variant=variant)   # release_rate defaults to CHA_DEPLOY_RELEASE_RATE; :full_re => C=1
-        pen += spec.weight * (log10(km) - spec.target)^2
-    end
-    pen
+    cha_centered_logratio_loss(enzyme, mech, d, coords_dict; keq=keq, variant=variant)
 end
 
 # -----------------------------------------------------------------------------------------
@@ -507,22 +483,16 @@ end
 #   pick, restarts NamedTuple vector, and the post-fit pin-overwrite. The determinism scheme
 #   is preserved so the pipeline's pmap/seed contract is unchanged. Only the objective differs
 #   -- it threads through the Cha law (cha_centered_logratio_loss) over the named coords.
-#   `anchors` (Task 11) carries soft-anchor targets on the DERIVED apparent Michaelis
-#   constants -- e.g. `Dict(:Km_PGA => (target=log10(59e-6), weight=1.0))` pulls the PGD
-#   apparent Km_PGA toward the 38-80µM literature band midpoint (Mode 2). The penalty is
-#   STRICTLY ADDITIVE on the centered base loss and applied only when anchors is non-empty, so
-#   anchors=nothing reproduces the Mode-1 fit bit-for-bit. The default anchor weight (1.0 at
-#   the call site) is PROVISIONAL -- to be resolved against the Phase-C flux gate (spec §11 /
-#   open item T1-a). Returns (coords::Dict, loss, restarts).
+#   Returns (coords::Dict, loss, restarts).
 # -----------------------------------------------------------------------------------------
 function cha_fit_candidate(enzyme::Symbol, mech, d::Dataset; n_restarts::Int=8,
                            maxiter::Int=1_000_000, maxtime::Real=20.0, seed::Int=1,
                            keq::Union{Nothing,Real}=nothing,
                            pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
-                           anchors=nothing, variant::Symbol=:_deploy, scale::Symbol=:relative)
+                           variant::Symbol=:_deploy, scale::Symbol=:relative)
     coords_syms = cha_coords(enzyme, variant; scale=scale)
     lo, hi = cha_coord_bounds(enzyme, variant; scale=scale)
-    objective = u -> _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins, anchors;
+    objective = u -> _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins;
                                          keq=keq, variant=variant, scale=scale)
     best = (u=fill(NaN, length(coords_syms)), loss=Inf)
     endpoints = Vector{Float64}[]
@@ -588,16 +558,13 @@ end
 #     - PGD: nothing always-anchored. PGD's reverse constants have no literature values
 #       (Dalziel nuisance) so they are left free/unconstrained.
 #
-#   MODE 2 AND MODE 3 — additionally pin the forward inhibition constants to literature:
-#     - both enzymes: :Ki_ATP → lit[:Ki_ATP].
+#   MODE 2 — additionally pin the forward inhibition constants to literature:
 #     - both enzymes: :Ki_NADPH → lit[:Ki_NADPH] (G6PD 15µM; PGD 17µM). In Mode 1 Ki_NADPH is
 #       left FREE: G6PD Mode-1 data-identifies it (with Km_NADPH_rev anchored); PGD Mode-1
 #       reports it diagnostic/unconstrained (the cross-term de-conflation was refuted there).
-#
-#   NOT pinned here: :Km_PGA — an APPARENT constant (alpha·Kd_PGA/C), not a coord. Its Mode-3
-#   PGD hard override and Mode-2 PGD soft anchor go through the `anchors` mechanism in run.jl,
-#   NEVER as a hard coord-pin (mirrors pins.jl::resolve_coord_pins which keeps Km_PGA on the
-#   coord side; here Km_PGA is not even a coord).
+#     - G6PD only: :Ki_ATP → lit[:Ki_ATP]. PGD Mode 2 pins Ki_NADPH ALONE, so it isolates that
+#       one literature constant (2026-10-21: the PGD corpus carries no ATP, the Ki_ATP pin was
+#       fit-inert, and the Km_PGA soft anchor and the Mode-3 Km_PGA override were retired).
 # -----------------------------------------------------------------------------------------
 function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol;
         anchor_reverse::Bool=true, extra::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
@@ -632,12 +599,12 @@ function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol;
     # `anchor_reverse=false` leaves it FREE (diagnostic — reintroduces the Ki_NADPH conflation).
     anchor_reverse && enzyme === :G6PD && (:Km_NADPH_rev in coords) && _pin!(:Km_NADPH_rev)
 
-    # MODE 2 / MODE 3: additionally pin the forward inhibition constants to literature.
-    if mode === :mode2 || mode === :mode3
-        (:Ki_ATP   in coords) && _pin!(:Ki_ATP)
+    # MODE 2: additionally pin the forward inhibition constants to literature.
+    if mode === :mode2
+        enzyme === :G6PD && (:Ki_ATP in coords) && _pin!(:Ki_ATP)
         (:Ki_NADPH in coords) && _pin!(:Ki_NADPH)
     elseif mode !== :mode1
-        error("resolve_cha_pins: unknown mode :$mode (expected :mode1, :mode2, or :mode3)")
+        error("resolve_cha_pins: unknown mode :$mode (expected :mode1 or :mode2)")
     end
 
     _finish(pins)

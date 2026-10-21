@@ -18,7 +18,9 @@ CO₂ → Ru5P → NADPH**. Because NADPH releases last it re-binds free E first
 > Pearse 1973 Fig 13 replots removed, Cottreau Fig 13 fixed concentrations and temperature
 > corrected, and per-row apparent Keq recomputed (0.079 / 0.1069 / 0.1606 M at 25 / 30 / 37 °C).
 > The fitted constants, CV figures and the Weisz 6A–6D discussion have **not** been re-run;
-> treat them as historical until they are.
+> treat them as historical until they are. The modes changed the same day: PGD Mode 3 and the
+> `Km_PGA` anchors used by Modes 2/3 below were retired, and `:full_re` now runs Mode 1 only
+> (it has no `Ki_NADPH` for Mode 2 to pin).
 
 ## Setup
 

@@ -102,15 +102,16 @@ data-identifiable forward shape constants:
 |---|---|
 | G6PD | `Kd_NADP`, `Kd_G6P`, `Kd_6PGLn`, `alpha`, `Ki_NADPH`, `Ki_ATP`, `Ki_ATP_EG`, `Km_NADPH_rev` |
 | PGD  | `Kd_NADP`, `Kd_PGA`, `alpha`, `Kd_CO2`, `Ki_NADPH`, `Ki_ATP`, `Ki_ATP_EN`, `Km_NADPH_rev` |
+| PGD `:no_atp` | as `:cha_base` without `Ki_ATP`, `Ki_ATP_EN` |
+| PGD `:full_re` | `Kd_NADP`, `Kd_PGA`, `alpha`, `Kd_NADPH`, `Kd_Ru5P`, `Kd_CO2` |
 
 The **apparent Michaelis constants** are NOT coords — they are **derived** readoffs
 `Km = alpha·Kd / C`, `C = 1+kf/release_rate` (`cha_apparent_km`): `Km_G6P` (G6PD);
 `Km_PGA`, `Km_NADP` (PGD). They are read at `CHA_DEPLOY_RELEASE_RATE` (so they match the
 deployed law) and surfaced with class `:derived`, each paired with its fiber-invariant
-specificity `kcatKm_* = kf/(alpha·Kd)` (`cha_specificity`). The Mode-2/3 `Km_PGA` *anchor*
-also reads at `CHA_DEPLOY_RELEASE_RATE` (`_cha_anchor_penalty`), so the penalty pulls the
-**deployed** apparent `Km_PGA` onto the literature target — a PGD consensus *deploy* at
-`release_rate = 1e3` lands `Km_PGA` on the 38–80 µM band, not `2×` it.
+specificity `kcatKm_* = kf/(alpha·Kd)` (`cha_specificity`). No mode pins or pulls an
+apparent Km: PGD's Mode-2 soft `Km_PGA` anchor and Mode-3 `Km_PGA` override (the
+`_cha_anchor_penalty` / `cha_anchors` machinery) were retired 2026-10-21.
 
 Semantics: **`Km`** = ratio-type Michaelis constant, **`Kd`** = binary free-enzyme
 dissociation constant, **`Ki`** = inhibitor / dead-end constant, **`alpha`** =
@@ -180,9 +181,9 @@ budget:
   15 µM.
 - **PGD:** the forward cross-term de-conflation was **refuted** on this corpus
   (Mode 1 reports `Ki_NADPH` diagnostic/unconstrained), so it is **pin-only** 17 µM
-  (Cottreau) in Modes 2/3. `Km_PGA` is **not data-identified** — `alpha` rails to its
-  bound (the corpus lacks sub-Km [PGA] coverage), so the apparent Km is anchored, not
-  recovered. The high/unstable PGD leave-one-article-out CV traces to a
+  (Cottreau) in Mode 2. `Km_PGA` is **not data-identified** — `alpha` rails to its
+  bound (the corpus lacks sub-Km [PGA] coverage). It is no longer anchored in any mode
+  (2026-10-21): the reported apparent `Km_PGA` is whatever the corpus gives. The high/unstable PGD leave-one-article-out CV traces to a
   **forward-CO₂ product-inhibition coverage gap** (the leave-Weisz1985-out fold);
   trimmed CV ≈ G6PD's. *This diagnosis predates the 2026-10-21 corpus correction,
   which raised Weisz 1985 Fig 6A–6D `[CO2]` 10× (and 6C/6D `[6PGA]` 10×); it has not
@@ -196,25 +197,30 @@ budget:
 ## Modes
 
 **G6PD's rate law is under active development.** The mode/anchor/ablation machinery
-below (`anchor_reverse`, mode1 vs mode2/3, the dead-end ablation variants) is
+below (`anchor_reverse`, mode1 vs mode2, the dead-end ablation variants) is
 scaffolding for a not-yet-settled law, not a permanent API surface — expect these
 gates to simplify as the mechanism converges (e.g. dropping the `anchor_reverse`
 distinction if the anchor turns out unnecessary on the full corpus, or promoting an
 ablation variant to be the deployed law outright).
 
-Each enzyme is fit in **per-enzyme modes** (`modes_for`: G6PD = `mode1, mode2`;
-PGD = `mode1, mode2, mode3`), written to separate, never-cross-ranked leaderboards.
-Pins are resolved structurally by `ChaFit.resolve_cha_pins`; the PGD `Km_PGA` anchor
-goes through the apparent-Km penalty (`cha_anchors` in `src/run.jl`), never a hard
-pin (it is a derived constant, not a coord).
+Each (enzyme, variant) is fit in **modes** (`modes_for`: `mode1, mode2`), written to
+separate, never-cross-ranked leaderboards. Pins are resolved structurally by
+`ChaFit.resolve_cha_pins`. `modes_for` drops Mode 2 for a variant it would leave
+identical to Mode 1 (no extra pin) — PGD `:full_re` has no `Ki_NADPH` coord, so it runs
+`mode1` only.
 
 - **Mode 1** — free fit. The data-only, family-agnostic headline. (G6PD still
   anchors `Km_NADPH_rev` in *all* modes to protect the cross-term identifiability.)
-- **Mode 2** — literature pins applied (`Ki_ATP`, `Ki_NADPH`; PGD soft-anchors
-  `Km_PGA` to the 38–80 µM band midpoint, 59 µM, weight 1.0 — provisional). This is
-  the ODE drop-in.
-- **Mode 3** (PGD only) — the explicit `Km_PGA` **hard override** (38 µM) realized as
-  a high-weight (100) apparent-Km anchor.
+- **Mode 2** — literature pins applied. G6PD: `Ki_ATP` + `Ki_NADPH` (15 µM). PGD:
+  **`Ki_NADPH` (17 µM) only**, so Mode 2 isolates the effect of that one literature
+  constant.
+
+**PGD mode changes (2026-10-21).** Mode 3 (the 38 µM `Km_PGA` override) and Mode 2's
+soft 59 µM `Km_PGA` anchor were removed, along with the `anchors` penalty machinery that
+served only them; PGD Mode 2 also stopped pinning `Ki_ATP` (the PGD corpus has no ATP, so
+the pin was fit-inert). Run dirs written before this change (`package_version` < 0.8.0 in
+`provenance.toml`) still carry `mode3` rows and plot normally; their Mode-2 values were fit
+under the old anchor.
 
 **`anchor_reverse` (G6PD switch, variant-aware default).** `fit_consensus_equation`/`run_g6pd` accept
 `anchor_reverse`; when `false`, `resolve_cha_pins` drops the all-modes `Km_NADPH_rev`
@@ -239,13 +245,14 @@ distortion warning fires — never hidden. Pinned/derived rows never enter the c
 so an intended data-vs-physiology contrast is not mislabeled a flatness warning.
 
 **Standing rule (parsimony-first): mode 1 is deploy for future re-derivations.**
-Mode 1 is the deploy source of truth; mode 2/3 are literature-sensitivity diagnostics
+Mode 1 is the deploy source of truth; mode 2 is a literature-sensitivity diagnostic
 only, never an independent deploy path. The gate is mode 1 passing coupled-flux/
 simulation-accuracy validation downstream in `PPP_Experiments` — not literature
 agreement; a simpler law disagreeing with a historical assay value may just mean the
 assay isn't what the live parameter should be. Generalizes the prior `:no_atp`-only
 convention to every future re-derivation — **not retroactive**: the deployed
-full-G6PD law (mode2-pinned) and PGD (mode2/3) are grandfathered until re-derived.
+full-G6PD law (mode2-pinned) and PGD (fit under the retired mode2/3 `Km_PGA` anchors) are
+grandfathered until re-derived.
 `:no_atp` (`src/enzymes/g6pd.jl`) is the first law under the rule: its mode1 fit is
 fully data-identified, so mode1 is its deploy candidate.
 
@@ -339,9 +346,10 @@ There is no `run_g6pd_noatp` / `run_pgd_fullre`: use
 - **Fit variants per enzyme:** G6PD `:SS_NADPH_release_rate_eq` (deploy) + `:no_atp`
   (ATP-free) + the dead-end-dropped ablations `:no_g6p_nadph_deadend`,
   `:no_g6p_atp_deadend`, `:no_g6p_both_deadends`; PGD `:cha_base` (deploy) + `:full_re`
-  (fully-RE evaluation variant). All are
+  (fully-RE evaluation variant) + `:no_atp` (ATP-free `:cha_base`, evaluation variant;
+  keeps every row). All are
   selected the same way — `fit_consensus_equation(:enzyme; variants=[…])` — with no
-  dedicated runners; each variant carries its own `row_filter`, so e.g. `:no_atp` drops
+  dedicated runners; each variant carries its own `row_filter`, so e.g. G6PD `:no_atp` drops
   the ATP-bearing rows while the G6P dead-end ablations keep ATP a metabolite. The
   internal `fit_consensus_equation(cfg; variants=[…], row_filter=…)` method (a config
   object plus explicit filter) exposes a custom variant set / row filter for advanced
@@ -431,7 +439,7 @@ plot_consensus_fit("results/G6PD_2026-07-16_smoke")
 | `goodness_of_fit.csv` | In-sample loss + leave-one-article-out CV (`mean ± se`) per mode. |
 | `identifiable_functions.csv` | Per-mode eigen-spectrum of the identifiable macro-coordinate subspace. |
 | `micro_parameters.jl` | ODE-ready deploy block — the **closed-form** `ChaDeploy.cha_deploy_micro` inverse of the fitted macro coords (no LM / root-finding; reproduces the law to machine precision). |
-| `report.md` | Per-mode macro tables, cross-mode agreement, the G6PD `koffQ` hybrid block, the PGD `Km_PGA` gap warning, and the de-conflation caveat. |
+| `report.md` | Per-mode macro tables, cross-mode agreement, the G6PD `koffQ` hybrid block, and the de-conflation caveat. |
 | `provenance.toml` | Package version / EnzymeRates SHA, budget, source corpus path (`data_csv`), row count, seed, smoke flag — reproducibility record. `_git_sha` reads `"unknown"` in an installed depot (no `.git` to inspect) — this is expected and already `try/catch`-guarded; the package version is the durable provenance handle for an installed copy. |
 
 `koffQ` is reported as a **hybrid** (`src/cha_koffq_report.jl`): deployed at a

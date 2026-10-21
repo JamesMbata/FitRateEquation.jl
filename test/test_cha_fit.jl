@@ -160,28 +160,6 @@ _with_rates(d, r) = Dataset(d.concs, collect(float.(r)), d.group, d.keq)
     @test all(fit.coords[s] == fit2.coords[s] for s in cha_coords(:G6PD))
 end
 
-@testset "Km_PGA soft-anchor pulls apparent Km_PGA toward the literature band (PGD)" begin
-    vs = FitRateEquation.consensus_variants(:PGD)
-    m = vs[findfirst(v->Symbol(v.name)===:cha_base, vs)].mech
-    d = load_dataset(pgd_config()); keq = median(d.keq)
-    # Unanchored Mode-1 fit (read at the DEPLOY fiber -- the apparent Km the deployed law exhibits):
-    f1 = cha_fit_candidate(:PGD, m, d; n_restarts=6, maxiter=300, maxtime=60.0, seed=1, keq=keq)
-    km1 = cha_apparent_km(:PGD, f1.coords, :Km_PGA)   # release_rate defaults to CHA_DEPLOY_RELEASE_RATE
-    # Soft-anchored fit toward 59µM (band midpoint), weight 1.0:
-    anchors = Dict(:Km_PGA => (target=log10(59e-6), weight=1.0))
-    f2 = cha_fit_candidate(:PGD, m, d; n_restarts=6, maxiter=300, maxtime=60.0, seed=1, keq=keq, anchors=anchors)
-    km2 = cha_apparent_km(:PGD, f2.coords, :Km_PGA)   # at the DEPLOY fiber
-    # The anchored apparent Km_PGA is closer to the band midpoint than the unanchored one ...
-    @test abs(log10(km2) - log10(59e-6)) < abs(log10(km1) - log10(59e-6))
-    # ... AND the anchor now pulls the DEPLOY-fiber apparent Km onto the target (within ~1.6x).
-    # Pre-fix the anchor targeted the FIT fiber, leaving the deploy-fiber Km ~2x (=0.30 dex) high.
-    @test abs(log10(km2) - log10(59e-6)) < 0.2
-
-    # No-op guarantee: anchors=nothing is bit-identical to the Mode-1 fit (no regression).
-    f3 = cha_fit_candidate(:PGD, m, d; n_restarts=6, maxiter=300, maxtime=60.0, seed=1, keq=keq, anchors=nothing)
-    @test all(f1.coords[s] == f3.coords[s] for s in cha_coords(:PGD))
-end
-
 @testset "resolve_cha_pins: per-mode pin sets + ERROR-on-no-op" begin
     # G6PD Mode 1: only Km_NADPH_rev anchored.
     p1 = resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode1)
@@ -191,20 +169,15 @@ end
     p2 = resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode2)
     @test Set(keys(p2)) == Set([:Km_NADPH_rev, :Ki_ATP, :Ki_NADPH])
     @test isapprox(p2[:Ki_NADPH], log10(15e-6); atol=1e-9)
-    # G6PD Mode 3: same hard-coord set as Mode 2.
-    p3 = resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode3)
-    @test Set(keys(p3)) == Set([:Km_NADPH_rev, :Ki_ATP, :Ki_NADPH])
+    # Mode 3 was retired (2026-10-21): an unknown mode errors for both enzymes.
+    @test_throws ErrorException resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode3)
     # PGD Mode 1: nothing anchored.
     @test isempty(resolve_cha_pins(:PGD, :cha_base, :mode1))
-    # PGD Mode 2: Ki_ATP + Ki_NADPH (17µM), NOT Km_PGA.
+    # PGD Mode 2: Ki_NADPH (17µM) ONLY -- isolates the effect of the literature Ki_NADPH.
     pp2 = resolve_cha_pins(:PGD, :cha_base, :mode2)
-    @test Set(keys(pp2)) == Set([:Ki_ATP, :Ki_NADPH])
+    @test Set(keys(pp2)) == Set([:Ki_NADPH])
     @test isapprox(pp2[:Ki_NADPH], log10(17e-6); atol=1e-9)
-    @test !haskey(pp2, :Km_PGA)
-    # PGD Mode 3: same as Mode 2 at the hard-coord level (Km_PGA handled via anchors, not here).
-    pp3 = resolve_cha_pins(:PGD, :cha_base, :mode3)
-    @test Set(keys(pp3)) == Set([:Ki_ATP, :Ki_NADPH])
-    @test !haskey(pp3, :Km_PGA)
+    @test_throws ErrorException resolve_cha_pins(:PGD, :cha_base, :mode3)
     # ERROR-on-no-op: a pin name not in cha_coords must error.
     @test_throws ErrorException ChaFit._assert_pin_is_coord(:G6PD, :NotACoord)
     # Happy path: a real coord does not error and returns nothing.
@@ -276,21 +249,6 @@ end
     end
 end
 
-@testset "anchor penalty reads the DEPLOY fiber (so the deployed Km lands on target)" begin
-    # _cha_anchor_penalty reads the apparent Km at CHA_DEPLOY_RELEASE_RATE (the deploy fiber),
-    # so the soft anchor pulls the DEPLOYED apparent Km toward `target` (re-anchored 2026-06-15).
-    coords = Dict(:Kd_PGA => 2.1509636367107708e-5, :Kd_NADP => 1.1694146500299896e-5,
-                  :alpha => 5.884013879751308)
-    anchors = Dict(:Km_PGA => (target = log10(59e-6), weight = 2.0))
-    pen = ChaFit._cha_anchor_penalty(:PGD, coords, anchors)
-    km_dep = cha_apparent_km(:PGD, coords, :Km_PGA)   # at CHA_DEPLOY_RELEASE_RATE
-    @test isapprox(pen, 2.0 * (log10(km_dep) - log10(59e-6))^2; rtol = 1e-12)
-    # And the deploy-fiber readoff is DISTINCT from the fit fiber (the ~2x PGD gap the fix closes).
-    km_fit = cha_apparent_km(:PGD, coords, :Km_PGA;
-                             release_rate = ChaFit._default_release_rate(:PGD))
-    @test !isapprox(km_fit, km_dep; rtol = 1e-3)
-end
-
 @testset "per-figure keq" begin
     enzyme = :G6PD
     mech   = FitRateEquation._deploy_mech(enzyme)
@@ -335,18 +293,6 @@ end
     # NOT the scalar-median loss.
     L_perfig = FitRateEquation.ChaFit.cha_centered_logratio_loss(enzyme, mech, d, r.coords)
     @test isapprox(r.loss, L_perfig; rtol=1e-6)
-end
-
-@testset "_cha_anchor_penalty reads the :full_re apparent Km at C=1" begin
-    # alpha*Kd_PGA sits EXACTLY on the anchor target -> penalty must be ~0 for :full_re (C=1),
-    # but NONZERO for the default fiber path (C = 1 + kf/CHA_DEPLOY_RELEASE_RATE != 1).
-    coords = Dict(:Kd_NADP=>1e-5, :Kd_PGA=>59e-6/1.4, :alpha=>1.4, :Kd_NADPH=>1e-6,
-                  :Kd_Ru5P=>5e-5, :Kd_CO2=>1e-4)                     # alpha*Kd_PGA = 59e-6
-    anchors = Dict(:Km_PGA => (target = log10(59e-6), weight = 1.0))
-    pen_fr = FitRateEquation.ChaFit._cha_anchor_penalty(:PGD, coords, anchors; variant=:full_re)
-    pen_dp = FitRateEquation.ChaFit._cha_anchor_penalty(:PGD, coords, anchors; variant=:_deploy)
-    @test pen_fr < 1e-12
-    @test pen_dp > 1e-8
 end
 
 @testset "shared loss core: centered wrapper is BITWISE the canonical fold order" begin

@@ -72,6 +72,25 @@ function _pgd_cha_base()
     ], extra); regs=[:ATP])
 end
 
+# ATP-free consensus (:no_atp): the :cha_base skeleton with BOTH ATP dead-ends dropped (the
+# NADPH dead-end on E·PGA is kept). The ATP terms are additive free-E-pool dead-ends, so this is
+# the exact Ki_ATP,Ki_ATP_EN -> Inf limit of _pgd_cha_base(). No ATP regulator. Evaluation-only:
+# the literature ATP inhibition is not supported by the (ATP-free) corpus or by preliminary
+# bench data, so this variant fits the consensus law without the effectively-pinned ATP terms.
+function _pgd_cha_base_noatp()
+    extra = _deadends([(_PGD_NADPH_FWD_FORMS, :NADPH)])
+    _mech([:NADP, :PGA], [:Ru5P, :CO2, :NADPH], vcat([
+        ([:E, :NADP],   [:E_N],  :(⇌)),
+        ([:E, :PGA],    [:E_G],  :(⇌)),
+        ([:E_N, :PGA],  [:E_NB], :(⇌)),
+        ([:E_G, :NADP], [:E_NB], :(⇌)),
+        ([:E_NB],       [:E_C],  :(<-->)),            # catalysis (forced SS, gauge anchor)
+        ([:E_C], [:E_1, :CO2],   :(⇌)),               # CO2 release  (RE, first out)
+        ([:E_1], [:E_2, :Ru5P],  :(<-->)),            # Ru5P release (SS, Topham rate-limiting)
+        ([:E_2], [:E, :NADPH],   :(⇌)),               # NADPH release (RE, last)
+    ], extra))
+end
+
 # Fully-RE CORE (:full_re): V1's topology (random RE substrate binding, SS catalysis gauge,
 # ordered RE product release CO2->Ru5P->NADPH) with the ATP dead-end effectors OFF (the
 # config-gated default of the fully-RE law). free_params = the 6 RE dissociation constants only
@@ -124,21 +143,16 @@ register_enzyme!(EnzymeWiring(
      (name=:SS_NADPH_release_rate_eq, mech=_pgd_consensus(:(<-->), :(<-->))),
      (name=Symbol("+NADPH_deadend_rate_eq"), mech=_pgd_v3()),
      (name=:cha_base, mech=_pgd_cha_base()),
-     (name=:full_re,  mech=_pgd_fullre_core())],
+     (name=:full_re,  mech=_pgd_fullre_core()),
+     (name=:no_atp,   mech=_pgd_cha_base_noatp())],
+    # PGD's only literature pin (Mode 2): the forward product-inhibition Ki_NADPH (Cottreau
+    # 17 µM), read from the noncompetitive E·PGA dead-end cross term (ki-ratio
+    # g[PGA]/g[PGA·NADPH]), de-conflated from the reverse Km. The Ki_ATP pin and the Km_PGA
+    # Mode-3 override were retired 2026-10-21 (the corpus carries no ATP; Mode 3 removed).
     Dict{Symbol,Float64}(
-        :Ki_ATP => log10(1.7e-3),
-        :Km_PGA => log10(38e-6),   # lit low-end of the 38–80 µM band (Mode-3 override; provisional)
-        # Forward product-inhibition Ki_NADPH for the literature-anchored deploy (Cottreau
-        # 17 µM). On V3 the forward Ki is now read from the noncompetitive E·PGA dead-end
-        # cross term (ki-ratio g[PGA]/g[PGA·NADPH]), de-conflated from the reverse Km.
         :Ki_NADPH => log10(17e-6),
     ),
-    Dict{Symbol,Vector{Symbol}}(
-        :RE_rate_eq               => [:Ki_ATP],
-        :SS_NADPH_release_rate_eq => [:Ki_ATP],
-        Symbol("+NADPH_deadend_rate_eq") => [:Ki_ATP],
-        :cha_base                 => [:Ki_ATP],
-    ),
+    Dict{Symbol,Vector{Symbol}}(),   # pin_table is read for G6PD only (resolve_cha_pins owns PGD's)
     _PGD_KI_MAP, _PGD_KD_MAP, _PGD_KM_RATIO, _PGD_SUBSTRATE_PAIR;
     # Forward Ki_NADPH read from the noncompetitive E·PGA dead-end CROSS term
     # (g[PGA]/g[PGA·NADPH]) on V3, distinct from the bare [NADPH] reverse-release Km. V1/V2

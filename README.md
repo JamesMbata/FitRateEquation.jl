@@ -140,10 +140,15 @@ are thin aliases for the deployed-law call, kept for discoverability.
 | G6PD | Pure rapid-equilibrium form (conflation diagnostic; not deployable) | `fit_consensus_equation(:g6pd; variants=[:RE_rate_eq])` |
 | PGD | **Consensus law (deployed)** — Topham Bi-Ter, steady-state Ru5P release | `run_pgd()` or `fit_consensus_equation(:pgd)` |
 | PGD | Fully rapid-equilibrium (evaluation only) | `fit_consensus_equation(:pgd; variants=[:full_re])` |
+| PGD | ATP-free — the consensus law with both ATP dead-ends removed (evaluation only; keeps every row) | `fit_consensus_equation(:pgd; variants=[:no_atp])` |
 
 `variants` takes a Julia list `[...]`; each name is a Symbol (a leading colon, e.g.
 `:no_atp`). Selecting a variant automatically applies its data filter (e.g. the
-ATP-free variant drops the ATP-bearing rows) and names its output folder after it.
+ATP-free G6PD variant drops the ATP-bearing rows) and names its output folder after it.
+The ATP-free PGD variant keeps every row: there the missing ATP term *is* the hypothesis
+being tested ("ATP does not inhibit PGD"), so ATP-bearing rows are the evidence for it. The
+bundled PGD corpus has no ATP rows, so on it `:no_atp` and the consensus law fit identically
+— the comparison tests ATP only on your own corpus with ATP data (`data_csv`).
 
 Every call takes the same `smoke`, `nprocs`, and `outdir` keywords as in the
 [Quickstart](#4-quickstart), and any of these fits can be launched from the

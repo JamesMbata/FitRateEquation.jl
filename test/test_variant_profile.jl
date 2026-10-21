@@ -12,6 +12,13 @@ using FitRateEquation: variant_profile, drop_atp_rows
     @test p.row_filter === identity
     @test p.label == "fullre"
 
+    # PGD :no_atp labels the outdir but keeps every row: the ATP-free law is the hypothesis
+    # "ATP has no effect", so ATP-bearing rows are the data that test it (unlike G6PD :no_atp).
+    # The bundled PGD corpus has none; this matters for a user corpus with ATP (data_csv).
+    p = variant_profile(:PGD, :no_atp)
+    @test p.row_filter === identity
+    @test p.label == "noatp"
+
     # deploy / any other variant: no filter, no label
     @test variant_profile(:G6PD, :SS_NADPH_release_rate_eq) == (row_filter=identity, label="")
     @test variant_profile(:PGD, :cha_base) == (row_filter=identity, label="")

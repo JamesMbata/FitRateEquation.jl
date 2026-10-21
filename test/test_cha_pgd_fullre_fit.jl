@@ -141,8 +141,9 @@ end
 
 @testset "resolve_cha_pins(:PGD, :full_re): mode-1 empty; effector guards no-op safely" begin
     # PGD has nothing always-anchored; core :full_re coords carry no Ki_*/Km_NADPH_rev, so the
-    # `in coords` guards skip every mode-2/3 pin (no silent-no-op ERROR): empty, no throw.
+    # `in coords` guards skip the mode-2 pin (no silent-no-op ERROR): empty, no throw. (The
+    # runner never fits :full_re in Mode 2 -- modes_for(:PGD, :full_re) == (:mode1,).)
     @test isempty(resolve_cha_pins(:PGD, :full_re, :mode1))
     @test isempty(resolve_cha_pins(:PGD, :full_re, :mode2))
-    @test isempty(resolve_cha_pins(:PGD, :full_re, :mode3))
+    @test_throws ErrorException resolve_cha_pins(:PGD, :full_re, :mode3)
 end

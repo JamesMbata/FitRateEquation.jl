@@ -1,38 +1,47 @@
 using FitRateEquation
 using Test
 
-@testset "mode set + deploy-variant cells are per-enzyme" begin
+@testset "mode set + deploy-variant cells are per-enzyme and per-variant" begin
     @test FitRateEquation.modes_for(:G6PD) == (:mode1, :mode2)
-    @test FitRateEquation.modes_for(:PGD)  == (:mode1, :mode2, :mode3)
+    # PGD: Mode 3 was retired (2026-10-21). A variant gets Mode 2 only when it carries a
+    # forward Ki_NADPH coord to pin; :full_re has none, so its Mode 2 would duplicate Mode 1.
+    @test FitRateEquation.modes_for(:PGD)            == (:mode1, :mode2)
+    @test FitRateEquation.modes_for(:PGD, :cha_base) == (:mode1, :mode2)
+    @test FitRateEquation.modes_for(:PGD, :no_atp)   == (:mode1, :mode2)
+    @test FitRateEquation.modes_for(:PGD, :full_re)  == (:mode1,)
     g = FitRateEquation._cells(:G6PD); p = FitRateEquation._cells(:PGD)
     # Deploy-variant-only: one variant per enzyme, one cell per mode.
-    @test length(g) == 2 && length(p) == 3
+    @test length(g) == 2 && length(p) == 2
     @test all(c -> c[1] === FitRateEquation.deploy_variant(:G6PD), g)
     @test all(c -> c[1] === FitRateEquation.deploy_variant(:PGD), p)
-    @test all(c -> c[3] in (:mode1, :mode2), g)
-    @test any(c -> c[3] === :mode3, p)
-    @test !any(c -> c[3] === :mode3, g)   # G6PD has no Mode 3
+    @test [c[3] for c in g] == [:mode1, :mode2]
+    @test [c[3] for c in p] == [:mode1, :mode2]
+    @test [c[3] for c in FitRateEquation._cells(:PGD; variants=[:full_re])] == [:mode1]
 end
 
-@testset "PGD Mode 3 overrides Km_PGA via a HIGH-weight anchor (not a coord pin)" begin
-    # Km_PGA is the DERIVED apparent constant alpha·Kd_PGA/C, NOT a cha_coord, so the Mode-3
-    # override is realized as a high-weight ChaFit anchor — never a hard coord pin.
-    pins3 = FitRateEquation.ChaFit.resolve_cha_pins(:PGD, :cha_base, :mode3)
-    @test !haskey(pins3, :Km_PGA)
-    a3 = FitRateEquation.cha_anchors(:PGD, :mode3)
-    @test a3 !== nothing && haskey(a3, :Km_PGA)
-    @test a3[:Km_PGA].weight == 100.0
-    @test isapprox(a3[:Km_PGA].target, log10(38e-6); atol=1e-9)
-    # Mode 2 has a SOFT (weight-1) Km_PGA anchor toward the band midpoint (59 µM).
-    a2 = FitRateEquation.cha_anchors(:PGD, :mode2)
-    @test a2 !== nothing && a2[:Km_PGA].weight == 1.0
-    @test isapprox(a2[:Km_PGA].target, log10(59e-6); atol=1e-9)
-    # Mode 1 is unanchored; G6PD is unanchored in every mode.
-    @test FitRateEquation.cha_anchors(:PGD, :mode1) === nothing
-    @test FitRateEquation.cha_anchors(:G6PD, :mode2) === nothing
-    # Ki_ATP is a hard Cha coord pin in Mode 2 (and 3); Mode 1 pins only the reverse channel.
-    @test haskey(FitRateEquation.ChaFit.resolve_cha_pins(:PGD, :cha_base, :mode2), :Ki_ATP)
-    @test !haskey(FitRateEquation.ChaFit.resolve_cha_pins(:PGD, :cha_base, :mode1), :Ki_ATP)
+@testset "PGD Mode 2 pins ONLY the forward Ki_NADPH (no Ki_ATP pin, no Km_PGA pull)" begin
+    rp = FitRateEquation.ChaFit.resolve_cha_pins
+    @test isempty(rp(:PGD, :cha_base, :mode1))
+    p2 = rp(:PGD, :cha_base, :mode2)
+    @test Set(keys(p2)) == Set([:Ki_NADPH])
+    @test isapprox(p2[:Ki_NADPH], log10(17e-6); atol=1e-9)
+    # G6PD Mode 2 is unchanged: reverse anchor + Ki_ATP + Ki_NADPH.
+    @test Set(keys(rp(:G6PD, :SS_NADPH_release_rate_eq, :mode2))) ==
+          Set([:Km_NADPH_rev, :Ki_ATP, :Ki_NADPH])
+    # Mode 3 no longer exists for either enzyme.
+    @test_throws ErrorException rp(:PGD, :cha_base, :mode3)
+    @test_throws ErrorException rp(:G6PD, :SS_NADPH_release_rate_eq, :mode3)
+end
+
+@testset "PGD Mode-2 fit == a fit with only Ki_NADPH pinned (no Km_PGA penalty)" begin
+    d    = load_dataset(FitRateEquation.pgd_config())
+    mech = FitRateEquation._deploy_mech(:PGD)
+    r2   = FitRateEquation._fit_and_cv(:cha_base, mech, d; mode=:mode2,
+                                       n_restarts=1, maxiter=40, maxtime=10.0, seed=3)
+    ref  = FitRateEquation.ChaFit.cha_fit_candidate(:PGD, mech, d; n_restarts=1, maxiter=40,
+               maxtime=10.0, seed=3, pins=Dict(:Ki_NADPH => log10(17e-6)), variant=:cha_base)
+    @test r2.fit.loss == ref.loss
+    @test r2.fit.coords == ref.coords
 end
 
 @testset "anchor_reverse=false frees the G6PD Km_NADPH_rev anchor (all modes)" begin

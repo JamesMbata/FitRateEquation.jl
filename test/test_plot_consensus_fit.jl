@@ -127,9 +127,20 @@ using FitRateEquation: g6pd_config
         @test vcb ≈ vcb_ref rtol=1e-12
     end
 
-    @testset "detect_enzyme maps the :full_re variant to PGD" begin
-        # "full_re" is now in the variant->enzyme map, so a run dir need not sit under fitting/PGD/.
-        @test FitRateEquation._VARIANT_TO_ENZYME["full_re"] == :PGD
+    @testset "detect_enzyme reads the enzyme from the substrate Kd in macro_constants.csv" begin
+        # Variant names are not enzyme-unique (:no_atp exists for both), so detection keys on
+        # the substrate dissociation constant every variant of an enzyme carries.
+        function _rundir(variant, kd)
+            dir = mktempdir()
+            write(joinpath(dir, "macro_constants.csv"),
+                  "variant,mode,name,value,class,ci\n$variant,mode1,Kd_NADP,1e-6,data_identified,1e-7\n" *
+                  "$variant,mode1,$kd,1e-5,data_identified,1e-6\n")
+            dir
+        end
+        @test FitRateEquation.detect_enzyme(_rundir("no_atp", "Kd_PGA")) == :PGD
+        @test FitRateEquation.detect_enzyme(_rundir("no_atp", "Kd_G6P")) == :G6PD
+        @test FitRateEquation.detect_enzyme(_rundir("full_re", "Kd_PGA")) == :PGD
+        @test FitRateEquation.detect_enzyme(_rundir("SS_NADPH_release_rate_eq", "Kd_G6P")) == :G6PD
     end
 end
 

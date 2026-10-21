@@ -33,6 +33,7 @@
 #       k7f = koff = release_rate     k7r = kon = release_rate / release_eq  (KdRu = koff/kon)
 #       K8  = Km_NADPH_rev            (bare-[NADPH] reverse-release Km)
 #       K9  = Ki_ATP    K10 = Ki_ATP_EN    K11 = Ki_NADPH
+#       [:no_atp variant] the two ATP dead-ends (K9/K10) are ABSENT.
 #
 # Gauge: the readoff (and the macro tuple) always carries kf = k5f = 1 and Et = E_total = 1
 # (unit-enzyme gauge); build_params likewise fixes k5f = 1 / E_total = 1, so the deploy micro
@@ -102,8 +103,8 @@ function _deploy_micro_map(enzyme::Symbol, coords::AbstractDict; release_rate::R
         return micro
     elseif enzyme === :PGD
         # PGD's free basis keeps NADP→E·PGA (K_NADP_EPGA = old K4 = alpha·Kd_NADP), so unlike
-        # G6PD there is no basis change.
-        return Dict{Symbol,Float64}(
+        # G6PD there is no basis change. The ATP dead-ends are absent for :no_atp.
+        micro = Dict{Symbol,Float64}(
             :K_NADP_E         => coords[:Kd_NADP],
             :K_PGA_E          => coords[:Kd_PGA],
             :K_NADP_EPGA      => coords[:alpha] * coords[:Kd_NADP],
@@ -111,10 +112,11 @@ function _deploy_micro_map(enzyme::Symbol, coords::AbstractDict; release_rate::R
             :koff_Ru5P_ENADPH => release_rate,
             :kon_Ru5P_ENADPH  => konv,
             :K_NADPH_E        => coords[:Km_NADPH_rev],   # bare-[NADPH] reverse-release Km (free E)
-            :K_ATPinh_E       => coords[:Ki_ATP],
-            :K_ATPinh_ENADP   => coords[:Ki_ATP_EN],
             :K_NADPH_EPGA     => coords[:Ki_NADPH],        # forward NADPH dead-end on E·PGA
         )
+        haskey(coords, :Ki_ATP)    && (micro[:K_ATPinh_E]     = coords[:Ki_ATP])
+        haskey(coords, :Ki_ATP_EN) && (micro[:K_ATPinh_ENADP] = coords[:Ki_ATP_EN])
+        return micro
     else
         error("cha_deploy_micro: unknown enzyme $enzyme (expected :G6PD or :PGD)")
     end
