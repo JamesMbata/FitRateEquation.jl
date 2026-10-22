@@ -533,7 +533,7 @@ ext/FitRateEquationMakieExt.jl
                        (plot_consensus_fit), loads only when CairoMakie is loaded
 
 data/                  bundled corpora: G6PD_all_EnzymeData.csv, PGD_EnzymeData_with_CO2.csv
-                       (PGD: byte copy of PPP_Experiments fitting/PGD/ at 5d17a23e,
+                       (PGD: byte copy of PPP_Experiments fitting/PGD/ at 5db8af5f,
                        400 rows / 21 figures)
 bin/fitrateequation    CLI entry point (using FitRateEquation; cli_main(ARGS))
 test/                  regression suite (runtests.jl); test/fixtures/ holds the byte-identity
