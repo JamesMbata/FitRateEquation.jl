@@ -186,8 +186,9 @@ budget:
   (2026-10-21): the reported apparent `Km_PGA` is whatever the corpus gives. The high/unstable PGD leave-one-article-out CV traces to a
   **forward-CO₂ product-inhibition coverage gap** (the leave-Weisz1985-out fold);
   trimmed CV ≈ G6PD's. *This diagnosis predates the 2026-10-21 corpus correction,
-  which raised Weisz 1985 Fig 6A–6D `[CO2]` 10× (and 6C/6D `[6PGA]` 10×); it has not
-  been re-run on the corrected corpus.*
+  which raised Weisz 1985 Fig 6A–6D `[CO2]` 10× (and 6C/6D `[6PGA]` 10×), and the
+  2026-10-22 removal of Ceyhan 2005 (a whole article, so leave-one-article-out CV now
+  has 6 folds, not 7); it has not been re-run on the current corpus.*
 
 > **Topology is FROZEN.** Do not add SS release steps to chase the forward
 > `Ki_NADPH` — proven inert (the shared symbol + corpus geometry is the blocker, not
@@ -532,9 +533,12 @@ ext/FitRateEquationMakieExt.jl
                        CairoMakie package extension: the actual render loop
                        (plot_consensus_fit), loads only when CairoMakie is loaded
 
-data/                  bundled corpora: G6PD_all_EnzymeData.csv, PGD_EnzymeData_with_CO2.csv
-                       (PGD: byte copy of PPP_Experiments fitting/PGD/ at 5db8af5f,
-                       400 rows / 21 figures)
+data/                  bundled corpora: G6PD_all_EnzymeData.csv,
+                       PGD_EnzymeData_with_CO2_no_Ceyhan.csv (PGD: byte copy of
+                       PPP_Experiments fitting/PGD/ at 97acfee8, 375 rows / 20 figures /
+                       6 articles; the 400-row corpus minus Ceyhan 2005 Fig 6, which was
+                       assayed in 100 mM phosphate + 10 mM Mg2+ and has a 5-10x higher
+                       apparent Km_PGA than every other figure)
 bin/fitrateequation    CLI entry point (using FitRateEquation; cli_main(ARGS))
 test/                  regression suite (runtests.jl); test/fixtures/ holds the byte-identity
                        smoke references (see above)

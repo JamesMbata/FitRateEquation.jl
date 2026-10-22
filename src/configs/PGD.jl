@@ -2,7 +2,7 @@
 # bundled corpus under the package's data/ directory via pkgdir, so it works
 # from any cwd; pass the data_csv keyword to point at a different corpus.
 # The runner and tests call pgd_config().
-function pgd_config(; data_csv = joinpath(pkgdir(FitRateEquation), "data", "PGD_EnzymeData_with_CO2.csv"))
+function pgd_config(; data_csv = joinpath(pkgdir(FitRateEquation), "data", "PGD_EnzymeData_with_CO2_no_Ceyhan.csv"))
     (
         name = "PGD",
         data_csv = data_csv,
