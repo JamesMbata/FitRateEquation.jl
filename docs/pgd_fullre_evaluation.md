@@ -19,7 +19,8 @@ CO₂ → Ru5P → NADPH**. Because NADPH releases last it re-binds free E first
 > corrected, and per-row apparent Keq recomputed (0.079 / 0.1069 / 0.1606 M at 25 / 30 / 37 °C).
 > On 2026-10-22 the bundled file became `data/PGD_EnzymeData_with_CO2_no_Ceyhan.csv`
 > (PPP_Experiments `97acfee8`): the same corpus minus the phosphate-buffered Ceyhan 2005 Fig 6,
-> 375 rows / 20 figures / 6 articles.
+> 375 rows / 20 figures / 6 articles. On 2026-10-31 it was renamed back to
+> `data/PGD_EnzymeData_with_CO2.csv` (contents unchanged) to match PPP_Experiments `9eab16c`.
 > The fitted constants, CV figures and the Weisz 6A–6D discussion have **not** been re-run;
 > treat them as historical until they are. The modes changed the same day: PGD Mode 3 and the
 > `Km_PGA` anchors used by Modes 2/3 below were retired, and `:full_re` now runs Mode 1 only
