@@ -533,12 +533,15 @@ ext/FitRateEquationMakieExt.jl
                        CairoMakie package extension: the actual render loop
                        (plot_consensus_fit), loads only when CairoMakie is loaded
 
-data/                  bundled corpora: G6PD_all_EnzymeData.csv,
-                       PGD_EnzymeData_with_CO2_no_Ceyhan.csv (PGD: byte copy of
-                       PPP_Experiments fitting/PGD/ at 97acfee8, 375 rows / 20 figures /
-                       6 articles; the 400-row corpus minus Ceyhan 2005 Fig 6, which was
-                       assayed in 100 mM phosphate + 10 mM Mg2+ and has a 5-10x higher
-                       apparent Km_PGA than every other figure)
+data/                  bundled corpora: G6PD_all_EnzymeData.csv (byte copy of
+                       PPP_Experiments fitting/G6PD/rate_eq/, 432 rows),
+                       PGD_EnzymeData_with_CO2.csv (PGD: byte copy of
+                       PPP_Experiments fitting/PGD/PGD_EnzymeData_with_CO2.csv, 375 rows /
+                       20 figures / 6 articles; the 400-row corpus minus Ceyhan 2005 Fig 6,
+                       which was assayed in 100 mM phosphate + 10 mM Mg2+ and has a 5-10x
+                       higher apparent Km_PGA than every other figure. Bundled 2026-10-22 as
+                       PGD_EnzymeData_with_CO2_no_Ceyhan.csv; renamed 2026-10-31 to match
+                       PPP_Experiments 9eab16c, contents unchanged)
 bin/fitrateequation    CLI entry point (using FitRateEquation; cli_main(ARGS))
 test/                  regression suite (runtests.jl); test/fixtures/ holds the byte-identity
                        smoke references (see above)
