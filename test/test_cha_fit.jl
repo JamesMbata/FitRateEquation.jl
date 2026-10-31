@@ -135,10 +135,12 @@ _with_rates(d, r) = Dataset(d.concs, collect(float.(r)), d.group, d.keq)
     # NADPH dead-end Ki_NADPH conflates with the bare-[NADPH] release term and rails to its
     # bound (see project_pgd_forward_ki_nadph_diagnosis / crossterm_ki_deconflation memory).
     # We therefore seed a planted point that DOES sit at a corpus-identifiable minimum and
-    # assert the constants that genuinely recover there: the two substrate Kd's and the ATP
-    # dead-end Ki (Ki_ATP recovers ~exactly for ALL planted points -- ATP inhibition is
-    # directly observed in the 32 ATP>0 rows). Ki_NADPH is DROPPED from the asserted subset
-    # (non-identifiable on this coverage); cf. the diagnostic survey in the task report.
+    # assert the constants that genuinely recover there: the two substrate Kd's. (Ki_ATP
+    # used to be asserted too -- it recovered ~exactly on the old 565-row corpus, where ATP
+    # inhibition was directly observed in 32 ATP>0 rows -- but the bundled corpus is now
+    # ATP-free, so Ki_ATP is non-identifiable and is no longer asserted.) Ki_NADPH is DROPPED
+    # from the asserted subset (non-identifiable on this coverage); cf. the diagnostic survey
+    # in the task report.
     Random.seed!(21)
     logθ = -3 .+ 2 .* rand(length(free_params(m)))
     planted = cha_macro_readoffs_G6PD(m, logθ; keq=keq)
@@ -151,8 +153,8 @@ _with_rates(d, r) = Dataset(d.concs, collect(float.(r)), d.group, d.keq)
                     ATP=_f(d.concs[i],:ATP)) for i in 1:nrows(d)]
     dsyn = _with_rates(d, syn_rate)   # helper: copy d but swap in syn_rate (see below)
     fit = cha_fit_candidate(:G6PD, m, dsyn; n_restarts=8, maxiter=400, maxtime=60.0, seed=1, keq=keq)
-    # Robustly-identified subset: the two substrate Kd's + the ATP dead-end Ki.
-    for s in (:Kd_NADP, :Kd_G6P, :Ki_ATP)
+    # Robustly-identified subset: the two substrate Kd's.
+    for s in (:Kd_NADP, :Kd_G6P)
         @test abs(log10(fit.coords[s]) - log10(coords0[s])) < 0.4
     end
     # Determinism: same seed -> identical coords.
