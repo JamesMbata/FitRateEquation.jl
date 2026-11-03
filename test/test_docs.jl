@@ -41,7 +41,8 @@ using Test
     @test occursin("fit_corpus.csv", readme)
     @test occursin("fit_corpus.csv", agents)
     @test occursin("read_fit_corpus", agents)    # the helper that replaced build_plot_df
-    @test occursin("seven artifacts", agents)    # was six
+    @test occursin("eight artifacts", agents)    # was seven before cv_folds.csv (0.9.0)
+    @test occursin("cv_folds.csv", agents) && occursin("cv_folds.csv", readme)
 
     # The determinism section must describe the single structural gate as implemented.
     # Anchor on phrases unique to that section: a bare "structural" needle would pass on

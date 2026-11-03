@@ -39,20 +39,25 @@ end
 @testset "task generation (deterministic, worker-invariant)" begin
     d = load_dataset(g6pd_config())
     cells = FitRateEquation._cells()
-    folds = FitRateEquation._article_folds(d)
-    n_articles = length(folds)
+    # Every cell is cross-validated under BOTH schemes: its fold tasks are the article folds,
+    # then the figure folds (CV_SCHEMES order), each in `_cv_folds` order.
+    folds = [(scheme=sc, fold=f) for sc in FitRateEquation.CV_SCHEMES
+                                 for f in FitRateEquation._cv_folds(d, sc)]
+    n_folds = length(folds)
+    @test n_folds == length(FitRateEquation._cv_folds(d, :article)) +
+                     length(FitRateEquation._cv_folds(d, :figure))
     tasks = FitRateEquation._build_tasks(cells, d; seed=1)
 
     # Deploy-variant-only: G6PD = 1 variant (:SS_NADPH_release_rate_eq) × 2 modes = 2 cells;
-    # n_cells × (1 + n_articles) = 2 × (1 + 7) = 16 for the G6PD corpus.
+    # n_cells × (1 + n_article_folds + n_figure_folds) tasks.
     @test length(cells) == 2
     @test all(v === :SS_NADPH_release_rate_eq for (v, _, _) in cells)
-    @test length(tasks) == length(cells) * (1 + n_articles)
+    @test length(tasks) == length(cells) * (1 + n_folds)
 
     allrows = collect(1:nrows(d))
     for (ci, (variant, mech, mode)) in enumerate(cells)
         cell_tasks = [t for t in tasks if t.ci == ci]
-        @test length(cell_tasks) == 1 + n_articles
+        @test length(cell_tasks) == 1 + n_folds
 
         # Exactly one :main per cell: full train rows, empty test, seed = base + ci.
         mains = [t for t in cell_tasks if t.kind === :main]
@@ -63,27 +68,27 @@ end
         @test m.train_idx == allrows
         @test isempty(m.test_idx)
 
-        # Folds follow _article_folds order, share the cell seed, carry the right subsets.
+        # Folds follow CV_SCHEMES × _cv_folds order, share the cell seed, carry the right subsets.
         cell_folds = [t for t in cell_tasks if t.kind === :fold]
-        @test length(cell_folds) == n_articles
-        for (f, fold) in zip(cell_folds, folds)
+        @test length(cell_folds) == n_folds
+        for (f, sf) in zip(cell_folds, folds)
             @test f.kind === :fold
             @test f.seed == 1 + ci
-            @test f.article == fold.article
-            @test f.train_idx == fold.train
-            @test f.test_idx == fold.test
+            @test f.scheme === sf.scheme
+            @test f.held_out == sf.fold.held_out
+            @test f.train_idx == sf.fold.train
+            @test f.test_idx == sf.fold.test
         end
 
-        # Pins are the resolved Cha values, shared per cell. G6PD always-anchors the
-        # conflating reverse channel Km_NADPH_rev (ALL modes); Mode-2 additionally pins
-        # Ki_ATP + Ki_NADPH. The pmap path threads exactly these, so the reduction is
-        # worker-invariant.
+        # Pins are the resolved Cha values, shared per cell. Default (anchor_reverse=false):
+        # Mode 1 pins nothing, Mode 2 pins Ki_ATP + Ki_NADPH. The pmap path threads exactly
+        # these, so the reduction is worker-invariant.
         @test m.pins == FitRateEquation.ChaFit.resolve_cha_pins(:G6PD, variant, mode)
-        @test haskey(m.pins, :Km_NADPH_rev)                           # always-anchored (all modes)
+        @test !haskey(m.pins, :Km_NADPH_rev)                          # reverse anchor is opt-in
         if mode === :mode2
-            @test haskey(m.pins, :Ki_ATP) && haskey(m.pins, :Ki_NADPH)
+            @test Set(keys(m.pins)) == Set([:Ki_ATP, :Ki_NADPH])
         else
-            @test Set(keys(m.pins)) == Set([:Km_NADPH_rev])           # Mode 1: only the reverse anchor
+            @test isempty(m.pins)
         end
         @test all(t.pins == m.pins for t in cell_tasks)
     end
@@ -108,11 +113,18 @@ end
         @test keys(p.r.fit.coords) == keys(s.r.fit.coords)
         @test all(isequal(p.r.fit.coords[k], s.r.fit.coords[k]) for k in keys(p.r.fit.coords))
         @test isequal(p.r.fit.loss, s.r.fit.loss)
-        # CV reduction (fold order, mean, se) reproduces _cha_loocv exactly.
-        @test isequal(p.r.cv.mean_cv, s.r.cv.mean_cv)
-        @test isequal(p.r.cv.se, s.r.cv.se)
-        @test [a.article for a in p.r.cv.per_article] == [a.article for a in s.r.cv.per_article]
-        @test isequal([a.loss for a in p.r.cv.per_article], [a.loss for a in s.r.cv.per_article])
+        # CV reduction (fold order, mean, se, per-fold losses) reproduces _cha_loocv exactly,
+        # for both schemes.
+        @test keys(p.r.cv) == keys(s.r.cv) == FitRateEquation.CV_SCHEMES
+        for sc in FitRateEquation.CV_SCHEMES
+            pc, sc_ = p.r.cv[sc], s.r.cv[sc]
+            @test pc.n_folds == sc_.n_folds > 0
+            @test isequal(pc.mean_cv, sc_.mean_cv)
+            @test isequal(pc.se, sc_.se)
+            @test [a.held_out for a in pc.per_fold] == [a.held_out for a in sc_.per_fold]
+            @test [a.n_test for a in pc.per_fold] == [a.n_test for a in sc_.per_fold]
+            @test isequal([a.loss for a in pc.per_fold], [a.loss for a in sc_.per_fold])
+        end
         # Macro constants: same names, classes, and (bit-identical) values.
         @test [m.name for m in p.classed] == [m.name for m in s.classed]
         @test [m.class for m in p.classed] == [m.class for m in s.classed]

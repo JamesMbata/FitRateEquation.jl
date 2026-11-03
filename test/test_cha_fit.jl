@@ -163,12 +163,16 @@ _with_rates(d, r) = Dataset(d.concs, collect(float.(r)), d.group, d.keq)
 end
 
 @testset "resolve_cha_pins: per-mode pin sets + ERROR-on-no-op" begin
-    # G6PD Mode 1: only Km_NADPH_rev anchored.
-    p1 = resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode1)
+    # G6PD default (anchor_reverse=false since 0.9.0): Mode 1 pins nothing, Mode 2 the forward Ki's.
+    @test isempty(resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode1))
+    @test Set(keys(resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode2))) ==
+          Set([:Ki_ATP, :Ki_NADPH])
+    # G6PD with the opt-in reverse anchor: Mode 1 pins only Km_NADPH_rev.
+    p1 = resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode1; anchor_reverse=true)
     @test Set(keys(p1)) == Set([:Km_NADPH_rev])
     @test isapprox(p1[:Km_NADPH_rev], log10(3.9e-6); atol=1e-9)
-    # G6PD Mode 2: + Ki_ATP + Ki_NADPH.
-    p2 = resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode2)
+    # G6PD Mode 2 with the anchor: + Ki_ATP + Ki_NADPH.
+    p2 = resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode2; anchor_reverse=true)
     @test Set(keys(p2)) == Set([:Km_NADPH_rev, :Ki_ATP, :Ki_NADPH])
     @test isapprox(p2[:Ki_NADPH], log10(15e-6); atol=1e-9)
     # Mode 3 was retired (2026-10-21): an unknown mode errors for both enzymes.
@@ -212,7 +216,8 @@ end
     # coupling: the Mode-1 G6PD anchor (Km_NADPH_rev -> literature) is a real cha_coord, so it
     # threads through cha_fit_candidate's pin path and is HELD EXACTLY in the returned coords
     # (the fit cannot silently ignore a pin the report renders as :literature_pinned).
-    pins = resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode1)  # {Km_NADPH_rev => LIT}
+    pins = resolve_cha_pins(:G6PD, :SS_NADPH_release_rate_eq, :mode1;
+                            anchor_reverse=true)                      # {Km_NADPH_rev => LIT}
     @test Set(keys(pins)) == Set([:Km_NADPH_rev])
     fit = cha_fit_candidate(:G6PD, m, d; n_restarts=4, maxiter=300, maxtime=60.0, seed=1, keq=keq, pins=pins)
     # The anchor is HELD exactly at the literature value in the fitted coords (report==fit).

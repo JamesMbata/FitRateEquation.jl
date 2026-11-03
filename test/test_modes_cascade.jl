@@ -25,8 +25,9 @@ end
     p2 = rp(:PGD, :cha_base, :mode2)
     @test Set(keys(p2)) == Set([:Ki_NADPH])
     @test isapprox(p2[:Ki_NADPH], log10(17e-6); atol=1e-9)
-    # G6PD Mode 2 is unchanged: reverse anchor + Ki_ATP + Ki_NADPH.
-    @test Set(keys(rp(:G6PD, :SS_NADPH_release_rate_eq, :mode2))) ==
+    # G6PD Mode 2: Ki_ATP + Ki_NADPH (+ the reverse anchor only when opted in).
+    @test Set(keys(rp(:G6PD, :SS_NADPH_release_rate_eq, :mode2))) == Set([:Ki_ATP, :Ki_NADPH])
+    @test Set(keys(rp(:G6PD, :SS_NADPH_release_rate_eq, :mode2; anchor_reverse=true))) ==
           Set([:Km_NADPH_rev, :Ki_ATP, :Ki_NADPH])
     # Mode 3 no longer exists for either enzyme.
     @test_throws ErrorException rp(:PGD, :cha_base, :mode3)
@@ -44,21 +45,23 @@ end
     @test r2.fit.coords == ref.coords
 end
 
-@testset "anchor_reverse=false frees the G6PD Km_NADPH_rev anchor (all modes)" begin
+@testset "anchor_reverse: G6PD Km_NADPH_rev anchor is opt-in (all modes), default off" begin
     rp = FitRateEquation.ChaFit.resolve_cha_pins
-    # DEFAULT (anchor_reverse=true): the reverse channel is anchored in EVERY mode, and Mode 1
-    # pins ONLY that anchor. This is the deployed-law de-conflation contract — must be unchanged.
+    # DEFAULT (anchor_reverse=false since 0.9.0): Km_NADPH_rev is fit; Mode 1 pins nothing.
+    # Opt-in (anchor_reverse=true): the reverse channel is anchored in EVERY mode, and Mode 1
+    # pins ONLY that anchor (the de-conflation contract when the data cannot separate the terms).
     for variant in (:RE_rate_eq, :SS_NADPH_release_rate_eq)
-        @test Set(keys(rp(:G6PD, variant, :mode1))) == Set([:Km_NADPH_rev])
-        @test Set(keys(rp(:G6PD, variant, :mode2))) == Set([:Km_NADPH_rev, :Ki_ATP, :Ki_NADPH])
-        # anchor_reverse=false: Km_NADPH_rev is left FREE → the conflation returns.
-        @test isempty(rp(:G6PD, variant, :mode1; anchor_reverse=false))
-        @test Set(keys(rp(:G6PD, variant, :mode2; anchor_reverse=false))) == Set([:Ki_ATP, :Ki_NADPH])
+        @test isempty(rp(:G6PD, variant, :mode1))
+        @test Set(keys(rp(:G6PD, variant, :mode2))) == Set([:Ki_ATP, :Ki_NADPH])
+        @test rp(:G6PD, variant, :mode1) == rp(:G6PD, variant, :mode1; anchor_reverse=false)
+        @test Set(keys(rp(:G6PD, variant, :mode1; anchor_reverse=true))) == Set([:Km_NADPH_rev])
+        @test Set(keys(rp(:G6PD, variant, :mode2; anchor_reverse=true))) ==
+              Set([:Km_NADPH_rev, :Ki_ATP, :Ki_NADPH])
     end
-    # The ATP-free variant carries the same reverse anchor and responds to the flag identically.
-    @test Set(keys(rp(:G6PD, :no_atp, :mode1))) == Set([:Km_NADPH_rev])
-    @test isempty(rp(:G6PD, :no_atp, :mode1; anchor_reverse=false))
-    @test !haskey(rp(:G6PD, :no_atp, :mode2; anchor_reverse=false), :Km_NADPH_rev)
+    # The ATP-free variant carries the same opt-in reverse anchor.
+    @test isempty(rp(:G6PD, :no_atp, :mode1))
+    @test Set(keys(rp(:G6PD, :no_atp, :mode1; anchor_reverse=true))) == Set([:Km_NADPH_rev])
+    @test !haskey(rp(:G6PD, :no_atp, :mode2), :Km_NADPH_rev)
 
     # The 3 dead-end-dropped variants carry the same all-modes reverse anchor and respond to
     # the flag identically; each also auto-skips pinning whichever Ki it structurally lacks
@@ -69,49 +72,42 @@ end
         (:no_g6p_atp_deadend,   true,  true),
         (:no_g6p_both_deadends, false, true),
     ]
-        @test Set(keys(rp(:G6PD, variant, :mode1))) == Set([:Km_NADPH_rev])
-        @test isempty(rp(:G6PD, variant, :mode1; anchor_reverse=false))
-        m2 = rp(:G6PD, variant, :mode2)
+        @test Set(keys(rp(:G6PD, variant, :mode1; anchor_reverse=true))) == Set([:Km_NADPH_rev])
+        @test isempty(rp(:G6PD, variant, :mode1))
+        m2 = rp(:G6PD, variant, :mode2; anchor_reverse=true)
         @test (:Ki_NADPH in keys(m2)) == has_nadph
         @test (:Ki_ATP in keys(m2))   == has_atp
         @test :Ki_ATP_EG ∉ keys(m2)
-        @test !haskey(rp(:G6PD, variant, :mode2; anchor_reverse=false), :Km_NADPH_rev)
+        @test !haskey(rp(:G6PD, variant, :mode2), :Km_NADPH_rev)
     end
 
-    # PGD has no always-on reverse anchor, so the flag is a no-op for it.
+    # PGD has no reverse anchor, so the flag is a no-op for it.
     pairs = [(:PGD, :cha_base, :mode1), (:PGD, :cha_base, :mode2)]
     for (enz, variant, mode) in pairs
-        @test rp(enz, variant, mode; anchor_reverse=false) == rp(enz, variant, mode)
+        @test rp(enz, variant, mode; anchor_reverse=true) == rp(enz, variant, mode)
     end
 end
 
-@testset "_default_anchor_reverse: ablation variants default false, everything else true" begin
-    dar = FitRateEquation._default_anchor_reverse
-    # Anchor-optional ablation variants (alone or together): default false.
-    @test dar(:G6PD, [:no_g6p_atp_deadend]) == false
-    @test dar(:G6PD, [:no_g6p_nadph_deadend]) == false
-    @test dar(:G6PD, [:no_g6p_both_deadends]) == false
-    @test dar(:G6PD, [:no_g6p_nadph_deadend, :no_g6p_both_deadends]) == false
-    # The deploy variant, the raw conflating RE law, and :no_atp are unaffected (still true) --
-    # :no_atp is untested for anchor-off joint identifiability, so it keeps the safe default.
-    @test dar(:G6PD, [:SS_NADPH_release_rate_eq]) == true
-    @test dar(:G6PD, [:RE_rate_eq]) == true
-    @test dar(:G6PD, [:no_atp]) == true
-    # Mixing an ablation variant with one that still requires the anchor: conservative true.
-    @test dar(:G6PD, [:no_g6p_atp_deadend, :SS_NADPH_release_rate_eq]) == true
-    # Empty variant list: conservative true.
-    @test dar(:G6PD, Symbol[]) == true
-    # PGD has no anchor-optional variants at all: always true.
-    @test dar(:PGD, [:cha_base]) == true
-end
-
-@testset "_requires_reverse_anchor: NOT DEPLOYABLE banner scope matches the default's scope" begin
-    rra = FitRateEquation._requires_reverse_anchor
-    @test rra(:G6PD, :SS_NADPH_release_rate_eq) == true
-    @test rra(:G6PD, :RE_rate_eq) == true
-    @test rra(:G6PD, :no_atp) == true
-    @test rra(:G6PD, :no_g6p_nadph_deadend) == false
-    @test rra(:G6PD, :no_g6p_atp_deadend) == false
-    @test rra(:G6PD, :no_g6p_both_deadends) == false
-    @test rra(:PGD, :cha_base) == true
+@testset "_nadph_unidentified: data-driven NOT DEPLOYABLE rule" begin
+    nu  = FitRateEquation._nadph_unidentified
+    fnc = FitRateEquation._forward_nadph_coord
+    c(n, cls) = (name=n, value=1e-5, class=cls, ci=NaN)
+    with_dead = [c(:Kd_NADP, :data_identified), c(:Ki_NADPH, :unconstrained),
+                 c(:Km_NADPH_rev, :unconstrained)]
+    no_dead   = [c(:Kd_NADP, :data_identified), c(:Km_NADPH_rev, :unconstrained)]
+    # The forward-NADPH coord: the E·G6P·NADPH dead-end Ki_NADPH where the variant has it,
+    # else the bare-[NADPH] release Km (the dead-end-dropped ablations).
+    @test fnc(with_dead) === :Ki_NADPH
+    @test fnc(no_dead) === :Km_NADPH_rev
+    # Anchor off + forward-NADPH coord unconstrained -> NOT DEPLOYABLE.
+    @test nu(:G6PD, false, with_dead) == true
+    @test nu(:G6PD, false, no_dead) == true
+    # Identified (or literature-pinned, as in Mode 2) forward coord -> deployable, even if the
+    # reverse-release Km itself is unconstrained.
+    @test nu(:G6PD, false, [c(:Ki_NADPH, :data_identified), c(:Km_NADPH_rev, :unconstrained)]) == false
+    @test nu(:G6PD, false, [c(:Ki_NADPH, :literature_pinned), c(:Km_NADPH_rev, :unconstrained)]) == false
+    @test nu(:G6PD, false, [c(:Km_NADPH_rev, :data_identified)]) == false
+    # Anchor on, or PGD: never flagged.
+    @test nu(:G6PD, true, with_dead) == false
+    @test nu(:PGD, false, with_dead) == false
 end
