@@ -124,7 +124,13 @@ register_enzyme!(EnzymeWiring(
      (name=:no_g6p_atp_deadend,        mech=_g6pd_consensus_no_g6p_atp_deadend()),
      (name=:no_g6p_both_deadends,      mech=_g6pd_consensus_no_g6p_both_deadends())],
     Dict{Symbol,Float64}(
-        :Ki_6PGLn     => log10(2.0e-4),
+        # 6-phospho-δ-gluconolactone (the TRUE product) reverse-reaction Km, Beutler & Kuhl 1986
+        # Fig 2a (1027 ± 183 µM, pH 7.0, 25 °C). Was 200 µM, the mean of the γ-lactone analogue
+        # Kms (Beutler 266, Gordon 1995 138 µM), until the corpus went δ-only (2026-11-03).
+        # REFERENCE ONLY: resolve_cha_pins never pins it (the Cha coord Kd_6PGLn is fit free in
+        # every variant and mode), and pinning it would double-count — it is Beutler's own fit
+        # of the Fig 2a rows the bundled corpus carries.
+        :Ki_6PGLn     => log10(1.027e-3),
         :Ki_ATP       => log10(1.5e-3),
         :Km_NADPH_rev => log10(3.9e-6),
         # Forward product-inhibition Ki_NADPH for the literature-anchored deploy

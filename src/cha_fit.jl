@@ -545,16 +545,17 @@ end
 #   Pin rules (only names that ARE members of cha_coords(enzyme) are emitted; the guard
 #   _assert_pin_is_coord protects against a future coord-set change):
 #
-#   ALL MODES (incl. Mode 1) — anchor the conflating reverse channel:
-#     - G6PD: pin :Km_NADPH_rev to lit[:Km_NADPH_rev] (3.9µM). This protects the Ki_NADPH
-#       cross-term identifiability (Task 8: leaving Km_NADPH_rev free makes the [G6P·NADPH]
-#       dead-end Ki_NADPH trade off with the bare-[NADPH] productive-release reverse channel,
-#       railing Ki_NADPH; anchoring Km_NADPH_rev de-conflates it to ~24µM). Kd_6PGLn is left
-#       FREE (a harmless 6PGL-binding nuisance → classifies :unconstrained on forward data).
-#       The `anchor_reverse` kwarg (default true) can turn this off: `anchor_reverse=false`
-#       leaves Km_NADPH_rev FREE, deliberately reintroducing the forward/reverse Ki_NADPH
-#       conflation. This is a DIAGNOSTIC ONLY — the deployed law REQUIRES the anchor; a fit
-#       with anchor_reverse=false is not deployable (Ki_NADPH goes non-identifiable).
+#   ALL MODES (incl. Mode 1), OPT-IN — the reverse-channel anchor:
+#     - G6PD, only when `anchor_reverse=true`: pin :Km_NADPH_rev to lit[:Km_NADPH_rev]
+#       (3.9µM, Gordon 1995, measured against the γ-lactone analogue). It protects the
+#       Ki_NADPH cross-term identifiability where the data cannot (Task 8: on the forward-only
+#       565-row corpus, leaving Km_NADPH_rev free let the [G6P·NADPH] dead-end Ki_NADPH trade
+#       off with the bare-[NADPH] productive-release channel, railing Ki_NADPH; anchoring it
+#       de-conflated Ki_NADPH to ~24µM). DEFAULT `anchor_reverse=false` (2026-11-03, 0.9.0):
+#       Km_NADPH_rev is fit from the data; whether the forward NADPH-inhibition coord came out
+#       identified is checked per fit (run.jl `_nadph_unidentified`, the NOT DEPLOYABLE
+#       banner). Separating the two NADPH terms from data needs NADPH series at >= 2 G6P
+#       levels (or NADPH-varied reverse data). Kd_6PGLn is always FREE.
 #     - PGD: nothing always-anchored. PGD's reverse constants have no literature values
 #       (Dalziel nuisance) so they are left free/unconstrained.
 #
@@ -567,7 +568,7 @@ end
 #       fit-inert, and the Km_PGA soft anchor and the Mode-3 Km_PGA override were retired).
 # -----------------------------------------------------------------------------------------
 function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol;
-        anchor_reverse::Bool=true, extra::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
+        anchor_reverse::Bool=false, extra::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
         scale::Symbol=:relative)
     lit    = FitRateEquation._lit_values(enzyme)
     coords = cha_coords(enzyme, variant; scale=scale)
@@ -595,8 +596,8 @@ function resolve_cha_pins(enzyme::Symbol, variant::Symbol, mode::Symbol;
         p
     end
 
-    # ALL MODES: anchor the conflating reverse channel where it is a coord with a lit value.
-    # `anchor_reverse=false` leaves it FREE (diagnostic — reintroduces the Ki_NADPH conflation).
+    # ALL MODES, opt-in: anchor the reverse channel where it is a coord with a lit value.
+    # Default `anchor_reverse=false` leaves it FREE (fit from data; see the header above).
     anchor_reverse && enzyme === :G6PD && (:Km_NADPH_rev in coords) && _pin!(:Km_NADPH_rev)
 
     # MODE 2: additionally pin the forward inhibition constants to literature.

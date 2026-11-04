@@ -6,7 +6,7 @@ using Test
 @testset "PGD fit_consensus_equation outputs (Cha macro-coord, smoke)" begin
     outdir = mktempdir()
     res = FitRateEquation._fit_consensus(pgd_config(); outdir=outdir, n_restarts=2, maxiter=150, maxtime=120.0, seed=1)
-    for f in ("macro_constants.csv","goodness_of_fit.csv","fit_corpus.csv",
+    for f in ("macro_constants.csv","goodness_of_fit.csv","cv_folds.csv","fit_corpus.csv",
               "identifiable_functions.csv","micro_parameters.jl","report.md")
         @test isfile(joinpath(outdir, f))
     end

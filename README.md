@@ -73,7 +73,7 @@ produce publication-quality numbers. Drop `smoke=true` (or set it to `false`)
 for the full, slower fit.
 
 When it finishes, you'll find a new folder under `./results/` (something like
-`results/G6PD_2026-07-16_smoke/`) containing **seven files** — the fitted
+`results/G6PD_2026-07-16_smoke/`) containing **eight files** — the fitted
 constants, goodness-of-fit statistics, and a human-readable report. See
 [Understanding the outputs](#6-understanding-the-outputs) below for what each
 one means.
@@ -120,7 +120,7 @@ Add `outdir="my_results"` to choose where the output folder is written.
 
 Each enzyme has one **deployed consensus rate law** — the equation wired into the
 downstream `PentosePhosphatePathway.jl` simulation — plus a few alternative laws
-you can fit for comparison. They all fit the same corpus and write the same seven
+you can fit for comparison. They all fit the same corpus and write the same eight
 output files; they differ only in the structure of the rate equation (which
 product-release steps are treated as steady-state, and which substrate/product
 "dead-end" inhibitions are included).
@@ -159,7 +159,7 @@ exist — see [`AGENTS.md`](AGENTS.md).
 
 ## 6. Understanding the outputs
 
-Every run writes seven files to its output folder:
+Every run writes eight files to its output folder:
 
 - **`macro_constants.csv`** — the headline result: the fitted binding/inhibition
   constants (Km, Kd, Ki) for the enzyme, with each one labeled as
@@ -169,8 +169,13 @@ Every run writes seven files to its output folder:
   it skip some rows, this is what it actually used — and it's what the plots are
   drawn against.
 - **`goodness_of_fit.csv`** — how well the fitted equation matches the data,
-  including a cross-validation score computed by holding out one paper's data
-  at a time.
+  including two cross-validation scores. The headline one holds out one paper's
+  data at a time (`cv_article_*`). The second holds out one figure at a time
+  (`cv_figure_*`); it is optimistic, because figures from the same paper share an
+  enzyme prep and assay, and exists to compare with EnzymeRates.jl, which scores
+  this way.
+- **`cv_folds.csv`** — the per-fold losses behind both cross-validation scores,
+  one row per held-out paper or figure, for comparing two fits fold by fold.
 - **`identifiable_functions.csv`** — which combinations of constants the data
   can actually pin down versus which are underdetermined.
 - **`micro_parameters.jl`** — the fitted result rewritten as a ready-to-use
@@ -235,7 +240,7 @@ And the flags:
 |---|---|
 | `--smoke` | Use the fast, low-budget fit (same as `smoke=true`) |
 | `--nprocs N` | Use `N` worker processes for the fit |
-| `--outdir DIR` | Write the run's seven output files into `DIR` |
+| `--outdir DIR` | Write the run's eight output files into `DIR` |
 | `--data CSV` | Fit your own CSV (canonical columns required) instead of the built-in corpus; valid with any enzyme subcommand |
 | `--variant NAME` | Fit an alternative rate law instead of the deployed one (e.g. `no_atp`, `full_re`, `no_g6p_atp_deadend`) |
 
@@ -285,7 +290,7 @@ using FitRateEquation
 fit_consensus_equation(:pgd; variants=[:full_re])   # add smoke=true for a fast plumbing check
 ```
 
-It writes the same seven output files as `run_pgd()`, into a folder labeled
+It writes the same eight output files as `run_pgd()`, into a folder labeled
 `PGD_fullre_...`. On the built-in data it generalizes to unseen papers
 noticeably better than the default PGD law and better captures how the product
 NADPH slows the enzyme down. It is an **evaluation variant only** — it is not

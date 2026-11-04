@@ -30,27 +30,24 @@ end
 # Variants the run sweeps. G6PD/PGD each run only their single deploy variant.
 run_variants(enzyme::Symbol) = [deploy_variant(enzyme)]
 
-# G6PD dead-end-dropped ablation variants (src/enzymes/g6pd.jl) for which
-# `anchor_reverse=false` is now a supported default, not a diagnostic: fit on the smaller,
-# more-physiological "mydata" corpus (134 rows), `no_g6p_atp_deadend` jointly data-identifies
-# BOTH Km_NADPH_rev and Ki_NADPH without the anchor (2026-07-21) -- the deployed law
-# (`SS_NADPH_release_rate_eq`) and the raw conflating `RE_rate_eq` do NOT show this on the
-# full 565-row historical corpus (Ki_NADPH stays unconstrained), so the anchor requirement is
-# unchanged for those. This has not been confirmed on the full corpus, so the exemption stays
-# scoped to exactly these three variants -- see AGENTS.md for the corpus caveat.
-const _G6PD_ANCHOR_OPTIONAL_VARIANTS = (:no_g6p_nadph_deadend, :no_g6p_atp_deadend,
-                                        :no_g6p_both_deadends)
+# G6PD reverse-channel anchor (`anchor_reverse`, Km_NADPH_rev -> 3.9 µM): OFF by default since
+# 0.9.0 (2026-11-03) for every variant. Without it, the forward NADPH product inhibition must be
+# identified by the data, which needs NADPH series at >= 2 G6P levels: at a single G6P the
+# E·G6P·NADPH dead-end (Ki_NADPH) and the bare-[NADPH] release term (Km_NADPH_rev) collapse into
+# one apparent Ki. So the NOT DEPLOYABLE banner is DATA-DRIVEN: it fires for an anchor-off G6PD
+# fit whose forward-NADPH coord classified :unconstrained. That coord is Ki_NADPH where the
+# variant has the dead-end, else Km_NADPH_rev (the dead-end-dropped ablations, where the release
+# term carries all forward NADPH inhibition). In Mode 2 Ki_NADPH is literature-pinned, so the
+# check passes there by construction.
+_forward_nadph_coord(classed) =
+    any(c -> c.name === :Ki_NADPH, classed) ? :Ki_NADPH : :Km_NADPH_rev
 
-# Whether `variant` still REQUIRES the reverse anchor for deployability (the deployed law and
-# the raw conflating RE law, for G6PD; always true for PGD, which has no such anchor).
-_requires_reverse_anchor(enzyme::Symbol, variant::Symbol) =
-    !(enzyme === :G6PD && variant in _G6PD_ANCHOR_OPTIONAL_VARIANTS)
-
-# Default `anchor_reverse` for a `fit_consensus_equation` call: false only when EVERY variant being fit is one
-# of the anchor-optional ablation variants; true otherwise (unchanged default everywhere else,
-# including any call that mixes an ablation variant with the deploy variant).
-_default_anchor_reverse(enzyme::Symbol, variants::AbstractVector{Symbol}) =
-    !(enzyme === :G6PD && !isempty(variants) && all(v -> v in _G6PD_ANCHOR_OPTIONAL_VARIANTS, variants))
+function _nadph_unidentified(enzyme::Symbol, anchor_reverse::Bool, classed)
+    (enzyme === :G6PD && !anchor_reverse) || return false
+    name = _forward_nadph_coord(classed)
+    i = findfirst(c -> c.name === name, classed)
+    i !== nothing && classed[i].class === :unconstrained
+end
 
 function _mech_for(enzyme::Symbol, variant::Symbol)
     for x in consensus_variants(enzyme)
@@ -59,14 +56,14 @@ function _mech_for(enzyme::Symbol, variant::Symbol)
     error("_mech_for: variant $variant not found in consensus_variants($enzyme)")
 end
 
-# One (variant, mode) cell fit + leave-one-article-out CV, via the Cha path. Mode 2 hard-pins
-# the literature coords (resolve_cha_pins); Mode 1 fits free over the always-anchored reverse
-# coords only. Fit the macro coords, then CV with the same pins. (Used by tests; the pmap path
+# One (variant, mode) cell fit + CV under both CV_SCHEMES (article, figure), via the Cha path.
+# Mode 2 hard-pins the literature coords (resolve_cha_pins); Mode 1 fits free over the
+# always-anchored reverse coords only. Fit the macro coords, then CV with the same pins. (Used by tests; the pmap path
 # threads the same pins per cell.)
 function _fit_and_cv(variant::Symbol, mech, d::Dataset;
                      mode::Symbol=:mode2, n_restarts::Int=8, maxiter::Int=1_000_000,
                      maxtime::Real=20.0, seed::Int=1, enzyme::Symbol=_enzyme_of(mech),
-                     anchor_reverse::Bool=true, scale::Symbol=:relative,
+                     anchor_reverse::Bool=false, scale::Symbol=:relative,
                      extra_pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
     keq     = nothing
     pins    = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
@@ -79,28 +76,30 @@ function _fit_and_cv(variant::Symbol, mech, d::Dataset;
     (variant=variant, mode=mode, mech=mech, pins=pins, fit=fit, cv=cv)
 end
 
-# Leave-one-article-out CV in Cha macro-coordinate space (the twin of loocv_by_article): each
-# fold refits the cha_coords on the train rows (same pins), then scores the held-out
-# article with cha_centered_logratio_loss at the train-fit coords.
+# Cross-validation in Cha macro-coordinate space, under every scheme in CV_SCHEMES (cv.jl):
+# each fold refits the cha_coords on the train rows (same pins, same seed), then scores the
+# held-out rows with `cha_score_loss` at the train-fit coords. Returns a NamedTuple keyed by
+# scheme (`cv.article`, `cv.figure`), each a `_cv_summary` (per_fold, mean_cv, se, n_folds).
+# This serial driver is the reference the pmap path (`_build_tasks`/`_reduce_cells`) must
+# reproduce bit-for-bit (test_parallel_equivalence.jl).
 function _cha_loocv(enzyme::Symbol, mech, d::Dataset; n_restarts::Int,
                     maxiter::Int, maxtime::Real, seed::Int, keq::Union{Nothing,Real},
                     pins::Dict{Symbol,Float64}, variant::Symbol=:_deploy,
                     scale::Symbol=:relative)
-    per = NamedTuple[]
-    folds0 = scale === :absolute ? _group_folds(d) : _article_folds(d)
-    folds  = [f for f in folds0 if !isempty(f.train) && !isempty(f.test)]
-    for fold in folds
-        dtr = _subset(d, fold.train); dte = _subset(d, fold.test)
-        fit = ChaFit.cha_fit_candidate(enzyme, mech, dtr; n_restarts=n_restarts, maxiter=maxiter,
-                                       maxtime=maxtime, seed=seed, keq=keq, pins=pins,
-                                       variant=variant, scale=scale)
-        push!(per, (article=fold.article,
-                    loss=ChaFit.cha_score_loss(enzyme, mech, dte, fit.coords; keq=keq, variant=variant, scale=scale)))
+    summaries = map(CV_SCHEMES) do scheme
+        per = NamedTuple[]
+        for fold in _cv_folds(d, scheme)
+            dtr = _subset(d, fold.train); dte = _subset(d, fold.test)
+            fit = ChaFit.cha_fit_candidate(enzyme, mech, dtr; n_restarts=n_restarts,
+                                           maxiter=maxiter, maxtime=maxtime, seed=seed, keq=keq,
+                                           pins=pins, variant=variant, scale=scale)
+            push!(per, (held_out=fold.held_out, n_test=length(fold.test),
+                        loss=ChaFit.cha_score_loss(enzyme, mech, dte, fit.coords; keq=keq,
+                                                   variant=variant, scale=scale)))
+        end
+        _cv_summary(per)
     end
-    losses = getfield.(per, :loss)
-    (per_article=per,
-     mean_cv = isempty(losses) ? NaN : mean(losses),
-     se      = isempty(losses) ? 0.0 : std(losses)/sqrt(length(losses)))
+    NamedTuple{CV_SCHEMES}(summaries)
 end
 
 "Compare the macro constants that are `data_identified` in BOTH modes; flag any whose
@@ -165,31 +164,28 @@ function variant_profile(enzyme::Symbol, variant::Symbol)
 end
 
 # Flat list of independent fit-tasks across all cells: one `:main` per cell, then one
-# `:fold` per article fold of that cell, in `_article_folds(d)` order. Each task is a
-# small descriptor carrying only identity + row-index subsets + the resolved pins; the
-# Dataset and mechanisms travel once via the CachingPool, not per task. Seed is a pure
-# function of cell identity (`seed + ci`) — exactly the `_fit_and_cv` scheme, where the main
-# fit and every fold of a cell share that one seed — so it is independent of worker count and
-# dispatch order.
-function _build_tasks(cells, d::Dataset; seed::Int=1, enzyme::Symbol=:G6PD, anchor_reverse::Bool=true,
+# `:fold` per CV fold of that cell — every scheme in CV_SCHEMES order, each in `_cv_folds`
+# order (the order `_cha_loocv` walks). Each task is a small descriptor carrying only
+# identity + row-index subsets + the resolved pins; the Dataset and mechanisms travel once via
+# the CachingPool, not per task. Seed is a pure function of cell identity (`seed + ci`) —
+# exactly the `_fit_and_cv` scheme, where the main fit and every fold of a cell share that one
+# seed — so it is independent of worker count and dispatch order. `_cv_folds` drops degenerate
+# folds (empty train/test), so no fit runs on empty data.
+function _build_tasks(cells, d::Dataset; seed::Int=1, enzyme::Symbol=:G6PD, anchor_reverse::Bool=false,
                       scale::Symbol=:relative, extra_pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
-    # Absolute mode folds by Fig group (single-article corpus makes leave-one-article-out
-    # degenerate); drop any degenerate fold (empty train/test) so no fit runs on empty data.
-    # Relative mode uses _article_folds, which already excludes degenerate folds — the filter is
-    # a no-op there, so the task list is byte-identical.
-    folds0 = scale === :absolute ? _group_folds(d) : _article_folds(d)
-    folds  = [f for f in folds0 if !isempty(f.train) && !isempty(f.test)]
+    folds = [(scheme=sc, fold=f) for sc in CV_SCHEMES for f in _cv_folds(d, sc)]
     allrows = collect(1:nrows(d))
     tasks = NamedTuple[]
     for (ci, (variant, mech, mode)) in enumerate(cells)
         pins = ChaFit.resolve_cha_pins(enzyme, variant, mode; anchor_reverse=anchor_reverse,
                                        extra=extra_pins, scale=scale)
         s = seed + ci
-        push!(tasks, (ci=ci, variant=variant, mode=mode, kind=:main, article="",
-                      seed=s, train_idx=allrows, test_idx=Int[], pins=pins))
-        for fold in folds
-            push!(tasks, (ci=ci, variant=variant, mode=mode, kind=:fold, article=fold.article,
-                          seed=s, train_idx=fold.train, test_idx=fold.test, pins=pins))
+        push!(tasks, (ci=ci, variant=variant, mode=mode, kind=:main, scheme=:none,
+                      held_out="", seed=s, train_idx=allrows, test_idx=Int[], pins=pins))
+        for (; scheme, fold) in folds
+            push!(tasks, (ci=ci, variant=variant, mode=mode, kind=:fold, scheme=scheme,
+                          held_out=fold.held_out, seed=s, train_idx=fold.train,
+                          test_idx=fold.test, pins=pins))
         end
     end
     tasks
@@ -198,9 +194,9 @@ end
 # Worker-pure: run one fit-task and return only what the master needs to reduce. Selects
 # the mechanism by variant from the captured `mechs` (EnzymeMechanism serializes fine, so
 # it is shipped via the pool, not rebuilt). Fits the macro COORDINATES over the task's pins
-# via ChaFit. `:main` returns the cell's coord-fit; `:fold` scores the held-out
-# article with `cha_centered_logratio_loss` at the train-fit coords — identical semantics to
-# `_cha_loocv` (macro-coord space).
+# via ChaFit. `:main` returns the cell's coord-fit; `:fold` scores the held-out rows
+# (an article or a figure, per `t.scheme`) with `cha_score_loss` at the train-fit coords —
+# identical semantics to `_cha_loocv` (macro-coord space).
 function _run_fit_task(t, d::Dataset, mechs; n_restarts::Int, maxiter::Int, maxtime::Real,
                        enzyme::Symbol=:G6PD, scale::Symbol=:relative)
     mech = mechs[t.variant]
@@ -212,18 +208,17 @@ function _run_fit_task(t, d::Dataset, mechs; n_restarts::Int, maxiter::Int, maxt
     if t.kind === :main
         (ci=t.ci, kind=:main, fit=fit)
     else
-        (ci=t.ci, kind=:fold, article=t.article,
+        (ci=t.ci, kind=:fold, scheme=t.scheme, held_out=t.held_out, n_test=length(t.test_idx),
          loss=ChaFit.cha_score_loss(enzyme, mech, _subset(d, t.test_idx), fit.coords;
                                     keq=keq, variant=t.variant, scale=scale))
     end
 end
 
-# Master-side reduction: group the order-preserved `raw` results by cell and rebuild each
-# cell's `r` NamedTuple (`per_article`, `mean_cv`, `se` reproduce `_cha_loocv` exactly, same
-# isempty NaN/0.0 guards), then run the cheap macro-coord identifiability + classification
-# serially. Cells are emitted in `ci` order so `write_outputs` is untouched.
+# Master-side reduction: group the order-preserved `raw` results by cell and scheme and rebuild
+# each cell's `r.cv` through `_cv_summary` (so it reproduces `_cha_loocv` exactly), then run the
+# cheap macro-coord identifiability + classification serially. Cells are emitted in `ci` order.
 function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbol=:G6PD,
-                       anchor_reverse::Bool=true, scale::Symbol=:relative,
+                       anchor_reverse::Bool=false, scale::Symbol=:relative,
                        extra_pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
     keq = median(d.keq)
     results = NamedTuple[]
@@ -232,12 +227,11 @@ function _reduce_cells(raw, cells, d::Dataset, mechs; seed::Int=1, enzyme::Symbo
                                        extra=extra_pins, scale=scale)
         mres = raw[findfirst(x -> x.ci == ci && x.kind === :main, raw)]
         fit  = mres.fit
-        per  = [(article=x.article, loss=x.loss)
-                for x in raw if x.ci == ci && x.kind === :fold]
-        losses = getfield.(per, :loss)
-        cv = (per_article=per,
-              mean_cv = isempty(losses) ? NaN : mean(losses),
-              se      = isempty(losses) ? 0.0 : std(losses)/sqrt(length(losses)))
+        cv = NamedTuple{CV_SCHEMES}(map(CV_SCHEMES) do scheme
+            _cv_summary(NamedTuple[(held_out=x.held_out, n_test=x.n_test, loss=x.loss)
+                                   for x in raw if x.ci == ci && x.kind === :fold &&
+                                                   x.scheme === scheme])
+        end)
         r = (variant=variant, mode=mode, mech=mech, pins=pins, fit=fit, cv=cv)
         idf = ChaClassify.cha_identifiable_functions(enzyme, mech, d, r.fit.coords;
                     keq=nothing, pins=pins, variant=variant,
@@ -257,15 +251,13 @@ end
  modes end-to-end, writing all artifacts. Not exported — the symbol method resolves the config,
  budget, row filter, and worker pool, then forwards here; tests that need explicit worker control
  or the raw cfg-default budget call it path-qualified as `FitRateEquation._fit_consensus`. The
- `n_cells × (1 + n_articles)` independent fits are dispatched via `pmap` over a
+ `n_cells × (1 + n_article_folds + n_figure_folds)` independent fits are dispatched via `pmap` over a
  `CachingPool` (a 1-process pool is the serial path); `pmap` order preservation + the
  identity-derived per-cell seed make the reduced output byte-identical at any worker count.
- `anchor_reverse` is a G6PD-only switch — see `run_g6pd`; its default is variant-aware
- (`_default_anchor_reverse`): `false` when every variant in `variants` is one of the
- anchor-optional ablations (`_G6PD_ANCHOR_OPTIONAL_VARIANTS`), `true` otherwise. Explicitly
- passing `false` for a variant that still requires the anchor (the deploy variant,
- `:RE_rate_eq`) reproduces the conflating fit and marks that variant's output NOT DEPLOYABLE.
- No-op for PGD (no always-on reverse anchor).
+ `anchor_reverse` is a G6PD-only switch (default `false`): `true` pins `Km_NADPH_rev` to the
+ 3.9 µM literature value in every mode. With it off, any variant × mode whose forward-NADPH
+ coord classifies `:unconstrained` is marked NOT DEPLOYABLE (`_nadph_unidentified`).
+ No-op for PGD (no reverse anchor).
  `row_filter` is a `DataFrame -> DataFrame` function applied to `read_corpus`'s output before
  the `Dataset` is built, so the rows it keeps are exactly the rows fit and the rows written to
  `fit_corpus.csv` (`drop_atp_rows` is the bundled example)."
@@ -273,7 +265,7 @@ function _fit_consensus(cfg; outdir::AbstractString, n_restarts::Int=8, maxiter:
                  maxtime::Real=20.0, seed::Int=1,
                  variants::Vector{Symbol}=run_variants(Symbol(cfg.name)),
                  row_filter=identity,
-                 anchor_reverse::Bool=_default_anchor_reverse(Symbol(cfg.name), variants),
+                 anchor_reverse::Bool=false,
                  scale::Symbol=:relative,
                  pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
     enzyme = Symbol(cfg.name)
@@ -319,11 +311,11 @@ The single entry point. `enzyme` is `:g6pd` or `:pgd` (case-insensitive). Select
 enzyme's deploy variant by default; pass `variants=[:no_atp]`, `[:full_re]`, `[:no_g6p_atp_deadend]`,
 … to fit an alternative law (its row filter + outdir label are applied automatically). `smoke=true`
 uses the fast plumbing budget. `data_csv` fits your own corpus (canonical columns required).
-Writes the seven artifacts to `outdir` (default `results/<LABEL>_<date>[_smoke]/`) and returns the
+Writes the eight artifacts to `outdir` (default `results/<LABEL>_<date>[_smoke]/`) and returns the
 results. `n_restarts`/`maxiter`/`maxtime` override the smoke→budget mapping when given.
 """
 function fit_consensus_equation(enzyme::Symbol; variants=nothing, data_csv=nothing,
-        smoke::Bool=false, outdir=nothing, nprocs=nothing, anchor_reverse=nothing,
+        smoke::Bool=false, outdir=nothing, nprocs=nothing, anchor_reverse::Bool=false,
         n_restarts=nothing, maxiter=nothing, maxtime=nothing, seed::Int=1,
         scale::Symbol=:relative, pins::Dict{Symbol,Float64}=Dict{Symbol,Float64}())
     enz = _canonical_enzyme(enzyme)
@@ -331,7 +323,7 @@ function fit_consensus_equation(enzyme::Symbol; variants=nothing, data_csv=nothi
     scale === :absolute && enz !== :G6PD &&
         error("absolute scale is not yet wired for $enz (G6PD only).")
     vars = variants === nothing ? run_variants(enz) : Vector{Symbol}(variants)
-    ar   = anchor_reverse === nothing ? _default_anchor_reverse(enz, vars) : anchor_reverse
+    ar   = anchor_reverse
     cfg  = _enzyme_config(enz, data_csv)
     rf   = _combined_row_filter(enz, vars)
     label = length(vars) == 1 ? variant_profile(enz, vars[1]).label : ""
@@ -396,8 +388,8 @@ function _write_provenance(outdir, d, meta; deploy_keq::Union{Nothing,Real}=noth
         # change after the run, a snapshot cannot).
         data_csv === nothing ||
             println(io, "data_csv        = \"$(_toml_escape(abspath(data_csv)))\"")
-        # Self-describing run: record the reverse-anchor state and the fitted variant(s) so a
-        # conflated (anchor_reverse=false) diagnostic run dir is never mistaken for a deploy run.
+        # Self-describing run: record the reverse-anchor state and the fitted variant(s), so a
+        # run dir always says whether Km_NADPH_rev was pinned (anchor_reverse=true) or fit.
         hasproperty(meta, :anchor_reverse) &&
             println(io, "anchor_reverse  = $(meta.anchor_reverse)")
         hasproperty(meta, :variants) &&
@@ -444,9 +436,14 @@ end
 _kcat_verdict(kcat::Real) = (150.0 <= kcat <= 250.0) ? "in-band (150–250 s⁻¹)" :
                                                        "OUT OF BAND (expected 150–250 s⁻¹)"
 
+# One report.md CV line for a `_cv_summary`. A scheme with no non-degenerate fold (absolute
+# mode's single-article corpus under leave-one-article-out) says so instead of printing NaN.
+_cv_line(s) = s.n_folds == 0 ? "n/a (no fold with both train and test rows)" :
+                               "$(s.mean_cv) ± $(s.se) ($(s.n_folds) folds)"
+
 function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G6PD",
                        enzyme::Symbol=:G6PD, deploy_keq::Real=median(d.keq),
-                       anchor_reverse::Bool=true,
+                       anchor_reverse::Bool=false,
                        corpus::Union{Nothing,AbstractDataFrame}=nothing,
                        data_csv::Union{Nothing,AbstractString}=nothing,
                        scale::Symbol=:relative)
@@ -477,10 +474,26 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
         end
     end
     CSV.write(joinpath(outdir, "macro_constants.csv"), DataFrame(rows))
-    # goodness_of_fit.csv
+    # goodness_of_fit.csv — in-sample loss + BOTH CV schemes, article (the headline) first.
     CSV.write(joinpath(outdir, "goodness_of_fit.csv"),
         DataFrame([(variant=res.variant, mode=res.mode, in_sample=res.r.fit.loss,
-                    cv_mean=res.r.cv.mean_cv, cv_se=res.r.cv.se) for res in results]))
+                    cv_article_mean=res.r.cv.article.mean_cv, cv_article_se=res.r.cv.article.se,
+                    cv_article_n_folds=res.r.cv.article.n_folds,
+                    cv_figure_mean=res.r.cv.figure.mean_cv, cv_figure_se=res.r.cv.figure.se,
+                    cv_figure_n_folds=res.r.cv.figure.n_folds) for res in results]))
+    # cv_folds.csv — one row per (variant, mode, scheme, held-out fold): the per-fold losses
+    # behind goodness_of_fit.csv, for paired per-fold comparisons (e.g. against EnzymeRates'
+    # loocv_results.csv `cv_fold_<group>` columns; its group key is Article_Fig, ours Article|Fig).
+    # Built column-wise so a run with no CV folds still writes the header.
+    fold_rows = [(res.variant, res.mode, scheme, f)
+                 for res in results for scheme in CV_SCHEMES for f in res.r.cv[scheme].per_fold]
+    CSV.write(joinpath(outdir, "cv_folds.csv"),
+        DataFrame(variant     = Symbol[x[1] for x in fold_rows],
+                  mode        = Symbol[x[2] for x in fold_rows],
+                  scheme      = Symbol[x[3] for x in fold_rows],
+                  held_out    = String[x[4].held_out for x in fold_rows],
+                  n_test_rows = Int[x[4].n_test for x in fold_rows],
+                  loss        = Float64[x[4].loss for x in fold_rows]))
     # identifiable_functions.csv (eigen-spectrum per variant × mode; `index` = eigen rank)
     spec = NamedTuple[]
     for res in results, (k, λ) in enumerate(res.idf.eigvals)
@@ -500,14 +513,14 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
         println(io, "# macro coords (the promoted Cha law's micro representative). The pure-RE")
         println(io, "# variant is this law's release-rate->infinity limit (not emitted separately).")
         for res in results
-            # Per-variant guardrail: an identifiability failure, not a parsimony trade-off --
-            # dropping the anchor doesn't simplify THIS variant's mechanism, it leaves Ki_NADPH
-            # railed at the same parameter count. Only fires for variants that still require the
-            # anchor (_requires_reverse_anchor) -- never for the anchor-optional ablations.
-            if !anchor_reverse && _requires_reverse_anchor(enzyme, res.variant)
+            # Data-driven guardrail (_nadph_unidentified): an anchor-off fit whose forward-NADPH
+            # coord came out :unconstrained has an undetermined NADPH product inhibition --
+            # an identifiability failure, not a parsimony trade-off.
+            if _nadph_unidentified(enzyme, anchor_reverse, res.classed)
+                c = _forward_nadph_coord(res.classed)
                 println(io, "# ##########################################################################")
-                println(io, "# NOT DEPLOYABLE [$(res.variant) $(res.mode)] — Ki_NADPH is structurally")
-                println(io, "# undetermined without this anchor (railed). Do NOT wire into the ODE.")
+                println(io, "# NOT DEPLOYABLE [$(res.variant) $(res.mode)] — $(c) is unconstrained")
+                println(io, "# without the reverse anchor (anchor_reverse=false). Do NOT wire into the ODE.")
                 println(io, "# ##########################################################################")
             end
             logθ = nothing
@@ -533,17 +546,22 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
         println(io, "# Consensus macro-constant extraction ($(name))\n")
         for res in results
             println(io, "## $(res.variant) — $(res.mode)\n")
-            # Per-variant: only the variants that still require the anchor get flagged (the
-            # anchor-optional ablations run anchor-off as a supported default, not a diagnostic).
-            if !anchor_reverse && _requires_reverse_anchor(enzyme, res.variant)
+            # Data-driven: flagged only when this fit's forward-NADPH coord is unconstrained.
+            if _nadph_unidentified(enzyme, anchor_reverse, res.classed)
                 println(io, "> **⚠ NOT DEPLOYABLE (`anchor_reverse=false`).** `Km_NADPH_rev` was left ",
-                            "unanchored, so the forward `Ki_NADPH` is non-identifiable (railed) here ",
+                            "unanchored and the forward NADPH-inhibition constant `",
+                            _forward_nadph_coord(res.classed), "` came out unconstrained ",
                             "— an identifiability failure, not a parsimony trade-off (same parameter ",
-                            "count, just an undetermined value). This variant's `micro_parameters.jl` ",
+                            "count, just an undetermined value). Separating the two NADPH terms needs ",
+                            "NADPH series at ≥ 2 G6P levels; refit with `anchor_reverse=true` or add ",
+                            "such data. This variant's `micro_parameters.jl` ",
                             "block is **not deployable**. Compare fit quality only.\n")
             end
-            cvlabel = scale === :absolute ? "leave-one-group-out (by Fig)" : "leave-one-article-out"
-            println(io, "CV ($cvlabel): $(res.r.cv.mean_cv) ± $(res.r.cv.se)\n")
+            # Both CV schemes, the methodologically correct article holdout first (headline).
+            println(io, "- CV, leave-one-article-out (headline): ", _cv_line(res.r.cv.article))
+            println(io, "- CV, leave-one-figure-out (optimistic: sibling figures share a lab, ",
+                        "enzyme prep and assay; for comparison with EnzymeRates): ",
+                        _cv_line(res.r.cv.figure), "\n")
             println(io, "| macro | value | class | ci |\n|---|---|---|---|")
             for m in res.classed
                 println(io, "| $(m.name) | $(m.value) | $(m.class) | $(m.ci) |")
@@ -596,7 +614,7 @@ end
 # report the (weak, wide-CI) data-identified koffQ from the reverse-weighted diagnostic, with
 # the deploy<->data gap and the honest caveat. Guarded so a report-only refit failure never
 # aborts write_outputs.
-function _write_g6pd_koffq_block(io, results, d, keq; anchor_reverse::Bool=true)
+function _write_g6pd_koffq_block(io, results, d, keq; anchor_reverse::Bool=false)
     println(io, "## G6PD koffQ hybrid (promoted NADPH-release fiber)\n")
     idx = findfirst(r -> r.variant === deploy_variant(:G6PD), results)
     res = results[idx === nothing ? 1 : idx]
@@ -689,19 +707,19 @@ _labeled(name::AbstractString, label::AbstractString) =
     isempty(label) ? String(name) : string(name, "_", label)
 
 """
-    run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true)
+    run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=false)
 
 Thin alias for `fit_consensus_equation(:g6pd; …)`: runs the deploy-variant × mode consensus
-macro-constant extraction for G6PD and writes the seven artifacts to `outdir`
+macro-constant extraction for G6PD and writes the eight artifacts to `outdir`
 (default: `./results/G6PD_<date>[_smoke]`). `smoke=true` uses a tiny fit budget; `nprocs`
 overrides the local worker-count default (a SLURM allocation always wins). Returns the results.
 
-`anchor_reverse` (default `true`) controls the G6PD reverse-channel anchor. **The deployed
-law REQUIRES `anchor_reverse=true`** — it anchors `Km_NADPH_rev` (3.9 µM) to de-conflate the
-forward `Ki_NADPH` from the reverse-release Km. `anchor_reverse=false` leaves it free (a
-conflation/identifiability DIAGNOSTIC only; tagged `NOT DEPLOYABLE`).
+`anchor_reverse` (default `false`) controls the G6PD reverse-channel anchor. `true` pins
+`Km_NADPH_rev` to 3.9 µM (Gordon 1995) to de-conflate the forward `Ki_NADPH` from the
+reverse-release Km when the data cannot. With it off, a fit whose forward-NADPH constant comes
+out unconstrained is tagged `NOT DEPLOYABLE`.
 """
-run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true) =
+run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=false) =
     fit_consensus_equation(:g6pd; outdir, smoke, nprocs, anchor_reverse)
 
 """

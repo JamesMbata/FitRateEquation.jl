@@ -20,9 +20,11 @@
 #     koffQ with its (wide) CI, flagging the deploy<->data gap. koffQ is silent to the forward
 #     gate (the gate's rows are P=0 / forward + product-inhibition; koffQ only enters the
 #     bare-[NADPH] productive-release reverse channel), but is WEAKLY data-identified by the
-#     18 PGLn-bearing reverse rows the gate discards (Beutler1986|3, Gordon1994|1A,
-#     Gordon1994|1B). The refit up-weights those rows; the handle is single-regime, single-pH
-#     and thin, so the CI is WIDE on purpose -- that width IS the finding.
+#     PGLn-bearing reverse rows the gate discards (since 2026-11-03 the 22 Beutler1986 Fig 2a
+#     δ-lactone rows, six per-donor groups, all at 50 µM NADPH; earlier corpora used 18 γ-lactone
+#     rows from Beutler1986|3 and Gordon1994|1A/1B). The refit up-weights those rows; the handle
+#     is single-regime, single-pH, single-NADPH and thin, so the CI is WIDE on purpose -- that
+#     width IS the finding.
 # =========================================================================================
 
 module ChaKoffqReport
@@ -35,7 +37,7 @@ using Statistics: median
 export koffq_hybrid_report
 
 # Number of times the PGLn-bearing groups' rows are replicated in the reverse-weighted
-# dataset. Replicating the 18 reverse rows K=20 times makes those 3 groups dominate the
+# dataset. Replicating the reverse rows K=20 times makes the PGLn-bearing groups dominate the
 # centered log-ratio sum (the forward groups still mean-center their own residuals to ~0 at
 # the data-identified forward coords, so the koffQ-sensitive reverse SSE is what the 1-D scan
 # actually minimizes). K is a DIAGNOSTIC weight, not a fit hyperparameter -- it does not touch
@@ -148,7 +150,7 @@ function koffq_hybrid_report(mech, d::Dataset;
                              keq::Real = median(d.keq),
                              variant::Symbol = :SS_NADPH_release_rate_eq,
                              koffQ_deploy::Real = 1.0e3,
-                             anchor_reverse::Bool = true)
+                             anchor_reverse::Bool = false)
     rev_idx = _pgln_rows(d)
     n_reverse = length(rev_idx)
 

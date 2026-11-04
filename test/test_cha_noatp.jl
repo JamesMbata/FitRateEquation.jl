@@ -77,11 +77,13 @@ end
 
 @testset "no_atp pins + modes" begin
     @test FitRateEquation.modes_for(:G6PD, :no_atp) == (:mode1, :mode2)
-    p1 = ChaFit.resolve_cha_pins(:G6PD, :no_atp, :mode1)
-    @test Set(keys(p1)) == Set([:Km_NADPH_rev])          # all-modes reverse anchor only
+    @test isempty(ChaFit.resolve_cha_pins(:G6PD, :no_atp, :mode1))   # default: anchor off
+    p1 = ChaFit.resolve_cha_pins(:G6PD, :no_atp, :mode1; anchor_reverse=true)
+    @test Set(keys(p1)) == Set([:Km_NADPH_rev])          # opt-in reverse anchor only
     p2 = ChaFit.resolve_cha_pins(:G6PD, :no_atp, :mode2)
     @test :Ki_NADPH in keys(p2)                          # lit cross-check
-    @test :Km_NADPH_rev in keys(p2)
+    @test :Km_NADPH_rev ∉ keys(p2)                       # default: anchor off
+    @test :Km_NADPH_rev in keys(ChaFit.resolve_cha_pins(:G6PD, :no_atp, :mode2; anchor_reverse=true))
     @test :Ki_ATP ∉ keys(p2)                             # not a coord -> auto-skipped
 end
 

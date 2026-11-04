@@ -357,24 +357,28 @@
 200,150,100,0,0,130.55,51.25,Ulusu2012,6,G6P,,8,37,87.2347,0.2,6.67998,0.1,0,0.39258,
 200,100,100,0,0,107.31,51.25,Ulusu2012,6,G6P,,8,37,87.2347,0.2,9.99693,0.1,0,0.47757,
 200,50,100,0,0,74.05,51.25,Ulusu2012,6,G6P,,8,37,87.2347,0.2,20.02457,0.1,0,0.69207,
-0,0,50,200,0,-0.0548,5,Beutler1986,3,PGLn,,7,25,4.25043,0,0,50,4.99188,18.26219,raw [PGLn] given as mM-1. No specific activity reported so 5 used as placeholder.
-0,0,50,150,0,-0.0481,5,Beutler1986,3,PGLn,,7,25,4.25043,0,0,50,6.56853,20.80233,
-0,0,50,100,0,-0.0354,5,Beutler1986,3,PGLn,,7,25,4.25043,0,0,50,9.96522,28.26335,
-0,50,50,200,0,-0.0354,5,Beutler1986,3,PGLn,,7,25,4.25043,0,50,50,4.98744,28.26238,
-0,50,50,150,0,-0.0297,5,Beutler1986,3,PGLn,,7,25,4.25043,0,50,50,6.58505,33.6277,
-0,50,50,100,0,-0.0189,5,Beutler1986,3,PGLn,,7,25,4.25043,0,50,50,9.97642,53.04547,
-0,100,50,200,0,-0.0225,5,Beutler1986,3,PGLn,,7,25,4.25043,0,100,50,5.00251,44.34868,
-0,100,50,150,0,-0.0186,5,Beutler1986,3,PGLn,,7,25,4.25043,0,100,50,6.58946,53.71447,
-0,100,50,100,0,-0.012,5,Beutler1986,3,PGLn,,7,25,4.25043,0,100,50,9.96294,83.39388,
-0,0,100,2000,0,-21.88,5,Gordon1994,1A,PGLn,,7,25,4.25043,,,,0.51057,0.0457,[Metabolites] given in figure captions. Raw [metab] values given as mM-1. Raw rate value given as 1/V. No specific activity reported so 5 used as placeholder.; no temp published; guessed to be 25C
-0,0,100,1000,0,-17.53,5,Gordon1994,1A,PGLn,,7,25,4.25043,,,,1.00126,0.05704,
-0,0,100,500,0,-12.16,5,Gordon1994,1A,PGLn,,7,25,4.25043,,,,2.01845,0.08223,
-0,0,100,250,0,-7.75,5,Gordon1994,1A,PGLn,,7,25,4.25043,,,,4.0228,0.12899,
-0,0,50,2000,0,-25.9,5,Gordon1994,1B,NADPH,,7,25,4.25043,,,0.01944,,0.03861,
-0,0,33.3,2000,0,-24.2,5,Gordon1994,1B,NADPH,,7,25,4.25043,,,0.02951,,0.04132,
-0,0,22.2,2000,0,-21.77,5,Gordon1994,1B,NADPH,,7,25,4.25043,,,0.04473,,0.04594,
-0,0,14.8,2000,0,-19.61,5,Gordon1994,1B,NADPH,,7,25,4.25043,,,0.06693,,0.051,
-0,0,9.88,2000,0,-16.44,5,Gordon1994,1B,NADPH,,7,25,4.25043,,,0.10075,,0.06083,
+2.5,0,50,49.9,0,-0.01744,5,Beutler1986,2a_d4,PGLn,,7,25,4.25043,2.5,0,50,20.02272,57.35527,"Beutler & Kuhl 1986 Fig 2a, delta-lactone (6-phospho-D-glucono-1,5-lactone) reverse reaction, normal donor 4 (identified by its printed line's Vmax and Km against Table I) (plotted symbol open circle). Digitized by fitting/G6PD/rate_eq/beutler1986_fig2a/. Raw [PGLn] given as mM-1, raw rate as (U/ml)-1. [NADP] 2.5 uM is carryover from the lactone/sham prep (100 uM NADP at 1:40); the cuvette also holds ~50-105 uM PGA, ~0.5-0.6 mM GSH and ~0.2-0.25 mM GSSG from the prep (no corpus columns). No specific activity reported so 5 used as placeholder. Same prep forward (G6P) Vmax 0.627 U/ml, reverse Vmax 0.335 U/ml (Table I)."
+2.5,0,50,100.1,0,-0.03352,5,Beutler1986,2a_d4,PGLn,,7,25,4.25043,2.5,0,50,9.99225,29.83527,
+2.5,0,50,145.5,0,-0.04231,5,Beutler1986,2a_d4,PGLn,,7,25,4.25043,2.5,0,50,6.87185,23.63635,
+2.5,0,50,195.6,0,-0.06156,5,Beutler1986,2a_d4,PGLn,,7,25,4.25043,2.5,0,50,5.11271,16.24303,
+2.5,0,50,49.8,0,-0.005387,5,Beutler1986,2a_d5,PGLn,,7,25,4.25043,2.5,0,50,20.09631,185.64304,"Beutler & Kuhl 1986 Fig 2a, delta-lactone (6-phospho-D-glucono-1,5-lactone) reverse reaction, normal donor 5 (identified by its printed line's Vmax and Km against Table I) (plotted symbol filled triangle). Digitized by fitting/G6PD/rate_eq/beutler1986_fig2a/. Raw [PGLn] given as mM-1, raw rate as (U/ml)-1. [NADP] 2.5 uM is carryover from the lactone/sham prep (100 uM NADP at 1:40); the cuvette also holds ~50-105 uM PGA, ~0.5-0.6 mM GSH and ~0.2-0.25 mM GSSG from the prep (no corpus columns). No specific activity reported so 5 used as placeholder. Same prep forward (G6P) Vmax 0.257 U/ml, reverse Vmax 0.124 U/ml (Table I). The highest-[PGLn]^-1 point's marker is clipped by the scan edge; its centre was reconstructed from the marker's bottom edge."
+2.5,0,50,99.6,0,-0.009919,5,Beutler1986,2a_d5,PGLn,,7,25,4.25043,2.5,0,50,10.03997,100.81888,
+2.5,0,50,146.5,0,-0.01615,5,Beutler1986,2a_d5,PGLn,,7,25,4.25043,2.5,0,50,6.82438,61.905,
+2.5,0,50,202.8,0,-0.01962,5,Beutler1986,2a_d5,PGLn,,7,25,4.25043,2.5,0,50,4.93016,50.96784,
+2.5,0,50,49.7,0,-0.008898,5,Beutler1986,2a_d6,PGLn,,7,25,4.25043,2.5,0,50,20.10358,112.38884,"Beutler & Kuhl 1986 Fig 2a, delta-lactone (6-phospho-D-glucono-1,5-lactone) reverse reaction, normal donor 6 (identified by its printed line's Vmax and Km against Table I) (plotted symbol filled circle). Digitized by fitting/G6PD/rate_eq/beutler1986_fig2a/. Raw [PGLn] given as mM-1, raw rate as (U/ml)-1. [NADP] 2.5 uM is carryover from the lactone/sham prep (100 uM NADP at 1:40); the cuvette also holds ~50-105 uM PGA, ~0.5-0.6 mM GSH and ~0.2-0.25 mM GSSG from the prep (no corpus columns). No specific activity reported so 5 used as placeholder. Same prep forward (G6P) Vmax 0.354 U/ml, reverse Vmax 0.146 U/ml (Table I)."
+2.5,0,50,100.0,0,-0.01451,5,Beutler1986,2a_d6,PGLn,,7,25,4.25043,2.5,0,50,10.00114,68.92169,
+2.5,0,50,145.1,0,-0.02274,5,Beutler1986,2a_d6,PGLn,,7,25,4.25043,2.5,0,50,6.89296,43.97234,
+2.5,0,50,198.6,0,-0.02782,5,Beutler1986,2a_d6,PGLn,,7,25,4.25043,2.5,0,50,5.03403,35.93904,
+2.5,0,50,90.5,0,-0.006334,5,Beutler1986,2a_dA,PGLn,,7,25,4.25043,2.5,0,50,11.05222,157.87283,"Beutler & Kuhl 1986 Fig 2a, delta-lactone (6-phospho-D-glucono-1,5-lactone) reverse reaction, one of normal donors 1-3 (Table I gives only Km 1180/930/1250 uM for these, too close to tell apart from the plot) (plotted symbol open square). Digitized by fitting/G6PD/rate_eq/beutler1986_fig2a/. Raw [PGLn] given as mM-1, raw rate as (U/ml)-1. [NADP] 2.5 uM is carryover from the lactone/sham prep (100 uM NADP at 1:40); the cuvette also holds ~50-105 uM PGA, ~0.5-0.6 mM GSH and ~0.2-0.25 mM GSSG from the prep (no corpus columns). No specific activity reported so 5 used as placeholder."
+2.5,0,50,112.3,0,-0.008552,5,Beutler1986,2a_dA,PGLn,,7,25,4.25043,2.5,0,50,8.90348,116.92936,
+2.5,0,50,179.1,0,-0.01044,5,Beutler1986,2a_dA,PGLn,,7,25,4.25043,2.5,0,50,5.58366,95.74869,
+2.5,0,50,226.4,0,-0.01598,5,Beutler1986,2a_dA,PGLn,,7,25,4.25043,2.5,0,50,4.41691,62.5652,
+2.5,0,50,65.4,0,-0.01173,5,Beutler1986,2a_dB,PGLn,,7,25,4.25043,2.5,0,50,15.29772,85.28771,"Beutler & Kuhl 1986 Fig 2a, delta-lactone (6-phospho-D-glucono-1,5-lactone) reverse reaction, one of normal donors 1-3 (Table I gives only Km 1180/930/1250 uM for these, too close to tell apart from the plot) (plotted symbol open triangle). Digitized by fitting/G6PD/rate_eq/beutler1986_fig2a/. Raw [PGLn] given as mM-1, raw rate as (U/ml)-1. [NADP] 2.5 uM is carryover from the lactone/sham prep (100 uM NADP at 1:40); the cuvette also holds ~50-105 uM PGA, ~0.5-0.6 mM GSH and ~0.2-0.25 mM GSSG from the prep (no corpus columns). No specific activity reported so 5 used as placeholder."
+2.5,0,50,162.1,0,-0.02582,5,Beutler1986,2a_dB,PGLn,,7,25,4.25043,2.5,0,50,6.16815,38.73574,
+2.5,0,50,323.8,0,-0.04881,5,Beutler1986,2a_dB,PGLn,,7,25,4.25043,2.5,0,50,3.0882,20.48652,
+2.5,0,50,45.2,0,-0.01488,5,Beutler1986,2a_dC,PGLn,,7,25,4.25043,2.5,0,50,22.11967,67.22682,"Beutler & Kuhl 1986 Fig 2a, delta-lactone (6-phospho-D-glucono-1,5-lactone) reverse reaction, one of normal donors 1-3 (Table I gives only Km 1180/930/1250 uM for these, too close to tell apart from the plot) (plotted symbol filled square). Digitized by fitting/G6PD/rate_eq/beutler1986_fig2a/. Raw [PGLn] given as mM-1, raw rate as (U/ml)-1. [NADP] 2.5 uM is carryover from the lactone/sham prep (100 uM NADP at 1:40); the cuvette also holds ~50-105 uM PGA, ~0.5-0.6 mM GSH and ~0.2-0.25 mM GSSG from the prep (no corpus columns). No specific activity reported so 5 used as placeholder."
+2.5,0,50,113.1,0,-0.03745,5,Beutler1986,2a_dC,PGLn,,7,25,4.25043,2.5,0,50,8.84325,26.70176,
+2.5,0,50,218.2,0,-0.06133,5,Beutler1986,2a_dC,PGLn,,7,25,4.25043,2.5,0,50,4.58392,16.30646,
 1.8,100,0,0,0,1.21267,181,Mbata2026,1A,NADP,26-09-01,7.2,37,13.6549,,,,,,
 1.8,12.5,0,0,0,0.384419,181,Mbata2026,1A,NADP,26-09-01,7.2,37,13.6549,,,,,,
 1.8,17.68,0,0,0,0.4759,181,Mbata2026,1A,NADP,26-09-01,7.2,37,13.6549,,,,,,

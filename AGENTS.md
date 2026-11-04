@@ -141,7 +141,13 @@ E_H  ⇌ E + NADPH        (SS — promoted NADPH release; super-node {E_C ⇌ E_
   `PPP_Experiments` repo). **Regulator:** ATP.
 - **Forward `Ki_NADPH`** is read as the **cross-term** `E·G6P·NADPH` dead-end
   (`g[G6P]/g[G6P·NADPH]`), distinct from the bare-[NADPH] reverse-release Km
-  (`Km_NADPH_rev`). Anchoring `Km_NADPH_rev` (3.9 µM, all modes) de-conflates the two.
+  (`Km_NADPH_rev`). The opt-in anchor (`anchor_reverse=true`: `Km_NADPH_rev` = 3.9 µM,
+  all modes) de-conflates the two when the data cannot; by default both are fit.
+- **Lactone binding is fit, not pinned.** The Cha coord `Kd_6PGLn` is free in every
+  variant and mode. The literature table's `Ki_6PGLn` (1027 µM, the true δ-lactone
+  reverse Km, Beutler & Kuhl 1986 Fig 2a; was the 200 µM γ-lactone-analogue mean before
+  0.9.0) is reference only: `resolve_cha_pins` never reads it, and pinning it would count
+  the bundled corpus's Beutler Fig 2a rows twice.
 
 ### PGD — random-binding / ordered-release Bi-Ter (Topham 1986)
 
@@ -210,8 +216,8 @@ separate, never-cross-ranked leaderboards. Pins are resolved structurally by
 identical to Mode 1 (no extra pin) — PGD `:full_re` has no `Ki_NADPH` coord, so it runs
 `mode1` only.
 
-- **Mode 1** — free fit. The data-only, family-agnostic headline. (G6PD still
-  anchors `Km_NADPH_rev` in *all* modes to protect the cross-term identifiability.)
+- **Mode 1** — free fit. The data-only, family-agnostic headline. (G6PD pins
+  `Km_NADPH_rev` in *all* modes only with the opt-in `anchor_reverse=true`.)
 - **Mode 2** — literature pins applied. G6PD: `Ki_ATP` + `Ki_NADPH` (15 µM). PGD:
   **`Ki_NADPH` (17 µM) only**, so Mode 2 isolates the effect of that one literature
   constant.
@@ -223,20 +229,25 @@ the pin was fit-inert). Run dirs written before this change (`package_version` <
 `provenance.toml`) still carry `mode3` rows and plot normally; their Mode-2 values were fit
 under the old anchor.
 
-**`anchor_reverse` (G6PD switch, variant-aware default).** `fit_consensus_equation`/`run_g6pd` accept
-`anchor_reverse`; when `false`, `resolve_cha_pins` drops the all-modes `Km_NADPH_rev`
-anchor, risking the forward/reverse `Ki_NADPH` conflation. Its default
-(`_default_anchor_reverse`) is `false` only when every variant being fit is one of the
-three ablation variants below (`_G6PD_ANCHOR_OPTIONAL_VARIANTS`); `true` otherwise.
-**The deployed law (`SS_NADPH_release_rate_eq`) still requires `anchor_reverse=true`**
-— verified on the full 565-row corpus, dropping the anchor there still leaves
-`Ki_NADPH` railed. Where it applies, this is an identifiability failure, not a
-parsimony trade-off: removing the anchor doesn't simplify the mechanism, it leaves
-`Ki_NADPH` railed at the *same* parameter count. Explicitly forcing `anchor_reverse=
-false` on a variant that still requires it (the deploy variant, `:RE_rate_eq`) tags
-that variant's output `NOT DEPLOYABLE` in `micro_parameters.jl`/`report.md`
-(per-variant, not per-run); the anchor state + variants are always recorded in
-`provenance.toml`. No-op for PGD.
+**`anchor_reverse` (G6PD switch, default `false` since 0.9.0).** `fit_consensus_equation`/
+`run_g6pd`/`resolve_cha_pins` accept `anchor_reverse`; `true` pins `Km_NADPH_rev` to the
+3.9 µM literature value (Gordon 1995, measured against the γ-lactone analogue) in every
+mode. The default was `true` (variant-aware, `false` only for the three ablation variants)
+until 2026-11-03, when it became `false` for every variant: the anchor is now opt-in and
+`Km_NADPH_rev` is fit from the data.
+
+The risk the anchor guarded against is real and data-dependent: at a single G6P the
+`E·G6P·NADPH` dead-end (`Ki_NADPH`) and the bare-[NADPH] release term (`Km_NADPH_rev`)
+collapse into one apparent Ki, and on the full 565-row forward-only corpus the deployed law
+left `Ki_NADPH` railed without the anchor (an identifiability failure, not a parsimony
+trade-off). Separating the two from data needs NADPH series at ≥ 2 G6P levels (or
+NADPH-varied reverse data). So the **`NOT DEPLOYABLE` banner is data-driven**
+(`_nadph_unidentified`): an anchor-off G6PD fit is tagged in `micro_parameters.jl`/
+`report.md` (per variant × mode) exactly when its forward-NADPH coord classified
+`:unconstrained` — `Ki_NADPH` where the variant has the dead-end, else `Km_NADPH_rev` (the
+dead-end-dropped ablations, where the release term carries all forward NADPH inhibition).
+Mode 2 literature-pins `Ki_NADPH`, so it passes by construction. The anchor state +
+variants are always recorded in `provenance.toml`. No-op for PGD.
 
 Pinned constants are tagged `:literature_pinned` **structurally** (a coordinate that
 has a pin), never from profile curvature. `report.md` surfaces a **mode-agreement
@@ -257,12 +268,14 @@ grandfathered until re-derived.
 `:no_atp` (`src/enzymes/g6pd.jl`) is the first law under the rule: its mode1 fit is
 fully data-identified, so mode1 is its deploy candidate.
 
-**Dead-end-dropped ablation variants (2026-07-20; anchor default updated 2026-07-21):**
+**Dead-end-dropped ablation variants (2026-07-20; anchor default updated 2026-07-21, then
+superseded by the global `anchor_reverse=false` default on 2026-11-03):**
 three further exact `Ki -> Inf` limits of the deployed law, each dropping one or both
 of the two abortive-ternary G6P-cross-term dead ends (`src/enzymes/g6pd.jl`):
 `:no_g6p_nadph_deadend` (drops `E·G6P·NADPH`, `Ki_NADPH -> Inf`),
 `:no_g6p_atp_deadend` (drops `E·G6P·ATP`, `Ki_ATP_EG -> Inf`),
-`:no_g6p_both_deadends` (drops both) — all three now default `anchor_reverse=false`.
+`:no_g6p_both_deadends` (drops both) — all three defaulted to `anchor_reverse=false`
+before every variant did.
 `:no_g6p_atp_deadend` originally needed `anchor_reverse=true` to de-conflate
 `Ki_NADPH` (2026-07-20 report below), but on the smaller, more-physiological 134-row
 `mydata` corpus it jointly data-identifies BOTH `Km_NADPH_rev` and `Ki_NADPH` without
@@ -270,7 +283,8 @@ the anchor (`results/no_g6p_atp_deadend_anchor_false_mydata`, 2026-07-21) — no
 confirmed on the full 565-row historical corpus (`SS_anchor_reverse_false`, same day,
 still shows `Ki_NADPH` unconstrained there), and possibly reflecting `mydata`'s more
 physiological assay conditions rather than a like-for-like comparison. Unresolved;
-the exemption stays scoped to these three variants, not promoted to the deployed law.
+the exemption stayed scoped to these three variants until the 2026-11-03 global default
+change, which replaced the variant list with the per-fit identifiability check above.
 
 Model-selection verdict on the original (anchor-appropriate) fits
 (`results/G6PD_deadend_variants_report.md`): `:no_g6p_atp_deadend` is a clean
@@ -297,14 +311,14 @@ FitRateEquation` has loaded, every runner works from any current directory. See
 reference.
 
 **One documented entry point** — `fit_consensus_equation(enzyme::Symbol; …)` (writes
-the seven artifacts below to `outdir` and returns the results):
+the eight artifacts below to `outdir` and returns the results):
 
 ```julia
 using FitRateEquation
 
 fit_consensus_equation(:g6pd | :pgd;
     variants=nothing, data_csv=nothing, smoke=false, outdir=nothing, nprocs=nothing,
-    anchor_reverse=nothing,                    # G6PD-only; variant-aware default (below)
+    anchor_reverse=false,                      # G6PD-only; true pins Km_NADPH_rev (below)
     n_restarts=nothing, maxiter=nothing, maxtime=nothing, seed=nothing)  # power-user budget
 ```
 
@@ -317,7 +331,7 @@ the output folder after it.
 `fit_consensus_equation`):
 
 ```julia
-run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=true)
+run_g6pd(; outdir=nothing, smoke=false, nprocs=nothing, anchor_reverse=false)
 run_pgd(;  outdir=nothing, smoke=false, nprocs=nothing)
 ```
 
@@ -437,7 +451,8 @@ plot_consensus_fit("results/G6PD_2026-07-16_smoke")
 |---|---|
 | `macro_constants.csv` | Resolved `cha_coords` per mode (class `data_identified` / `literature_pinned` / `unconstrained`) **plus** the derived apparent Michaelis constants (`Km_G6P` / `Km_PGA` / `Km_NADP`, class `derived`). |
 | `fit_corpus.csv` | The exact rows this run fit — Molar units, post-`row_filter`, with `Rate` / `source` (`Article\|Fig`) / `Apparent_Keq` / `X_axis_label`. Makes the run dir self-describing about its corpus; the plotter reads this, never a config default. |
-| `goodness_of_fit.csv` | In-sample loss + leave-one-article-out CV (`mean ± se`) per mode. |
+| `goodness_of_fit.csv` | In-sample loss + CV under **both** fold schemes per variant × mode: `cv_article_{mean,se,n_folds}` (leave-one-article-out, the **headline**: figures from one article share a lab, enzyme prep and assay, so holding out a figure leaks) then `cv_figure_{mean,se,n_folds}` (leave-one-figure-out, optimistic; for comparison with EnzymeRates.jl, whose LOOCV holds out one `Article_Fig` group, includes 1-row groups and uses SE = std/√n_groups, all reproduced here). Since 0.9.0; earlier run dirs have a single article-CV pair `cv_mean`/`cv_se`. |
+| `cv_folds.csv` | Per-fold losses behind both schemes: `variant, mode, scheme (article\|figure), held_out (article or Article\|Fig key), n_test_rows, loss`; article folds first, each scheme in corpus order. For paired per-fold comparisons (map `\|`→`_` to join EnzymeRates' `cv_fold_<group>` columns). Since 0.9.0. |
 | `identifiable_functions.csv` | Per-mode eigen-spectrum of the identifiable macro-coordinate subspace. |
 | `micro_parameters.jl` | ODE-ready deploy block — the **closed-form** `ChaDeploy.cha_deploy_micro` inverse of the fitted macro coords (no LM / root-finding; reproduces the law to machine precision). |
 | `report.md` | Per-mode macro tables, cross-mode agreement, the G6PD `koffQ` hybrid block, and the de-conflation caveat. |
@@ -524,8 +539,9 @@ src/core/data.jl, src/core/mechbuild.jl, src/core/gauge.jl
                        from fitting/mechanism_id/ in the sibling repo)
 src/macro_collect.jl   macroscopic-constant readback from the Haldane-reduced symbolic rate
                        law; retained as the exactness-anchor test spine (test_pgd_macro_collect.jl)
-src/cv.jl              LIVE: leave-one-article-out fold helpers (_article, _article_folds,
-                       _subset) used by run.jl's Cha-space LOOCV (_cha_loocv)
+src/cv.jl              LIVE: CV fold schemes (CV_SCHEMES = article, figure; _cv_folds,
+                       _article_folds, _group_folds, _subset, _cv_summary) used by run.jl's
+                       Cha-space CV (_cha_loocv and the pmap task path)
 
 src/plot_support.jl    non-Makie plot helpers (enzyme detection, config lookup, coordinate
                        readback, plot dataframe assembly) — reachable without CairoMakie
@@ -534,7 +550,10 @@ ext/FitRateEquationMakieExt.jl
                        (plot_consensus_fit), loads only when CairoMakie is loaded
 
 data/                  bundled corpora: G6PD_all_EnzymeData.csv (byte copy of
-                       PPP_Experiments fitting/G6PD/rate_eq/, 432 rows),
+                       PPP_Experiments fitting/G6PD/rate_eq/, 436 rows / 18 figures /
+                       6 articles; δ-lactone-only reverse data since 2026-11-03 — Beutler
+                       1986 Fig 2a in, Beutler Fig 3 and Gordon 1994 Fig 1A/1B γ-lactone
+                       analogue rows out),
                        PGD_EnzymeData_with_CO2.csv (PGD: byte copy of
                        PPP_Experiments fitting/PGD/PGD_EnzymeData_with_CO2.csv, 375 rows /
                        20 figures / 6 articles; the 400-row corpus minus Ceyhan 2005 Fig 6,

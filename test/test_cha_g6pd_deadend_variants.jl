@@ -109,15 +109,15 @@ for v in _DEADEND_VARIANTS
 
     @testset "$vname pins + modes" begin
         @test FitRateEquation.modes_for(:G6PD, vname) == (:mode1, :mode2)
-        p1 = ChaFit.resolve_cha_pins(:G6PD, vname, :mode1)
-        @test Set(keys(p1)) == Set([:Km_NADPH_rev])   # all-modes reverse anchor only
-        p1_free = ChaFit.resolve_cha_pins(:G6PD, vname, :mode1; anchor_reverse=false)
-        @test isempty(p1_free)
-        p2 = ChaFit.resolve_cha_pins(:G6PD, vname, :mode2)
+        p1 = ChaFit.resolve_cha_pins(:G6PD, vname, :mode1; anchor_reverse=true)
+        @test Set(keys(p1)) == Set([:Km_NADPH_rev])   # opt-in reverse anchor only
+        @test isempty(ChaFit.resolve_cha_pins(:G6PD, vname, :mode1))   # default: anchor off
+        p2 = ChaFit.resolve_cha_pins(:G6PD, vname, :mode2; anchor_reverse=true)
         @test (:Ki_NADPH in keys(p2)) == v.has_nadph
         @test (:Ki_ATP in keys(p2))   == v.has_atp
         @test :Ki_ATP_EG ∉ keys(p2)   # never a literature pin target (K9 has no lit anchor)
         @test :Km_NADPH_rev in keys(p2)
+        @test :Km_NADPH_rev ∉ keys(ChaFit.resolve_cha_pins(:G6PD, vname, :mode2))
     end
 
     @testset "$vname deploy inverse round-trips" begin
