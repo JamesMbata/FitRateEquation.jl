@@ -40,8 +40,8 @@
 # shares the macro tuple's gauge and the ABSOLUTE rate matches (no shape-only rescale). The
 # Haldane reverse catalysis k5r is NOT set here -- build_params derives it from the
 # independents + keq. `kr` is accepted for interface symmetry with cha_macro_tuple but unused
-# (build_params owns the Haldane); `koffQ` defaults to a healthy value but is normally the
-# actual release-off rate passed by the caller (== release_rate).
+# (build_params owns the Haldane); `koffQ` defaults to CHA_DEPLOY_RELEASE_RATE, the rate the
+# coords were fit at. Deploying fitted coords at any other rate is a different law.
 # =========================================================================================
 
 module ChaDeploy
@@ -125,11 +125,11 @@ end
 # Closed-form deploy: return logθ (log10) aligned to free_params(mech), assigning each
 # INDEPENDENT free-param its macro-derived value. build_params(mech, logθ; keq) fills the
 # Wegscheider/Haldane-dependent params (K3, k5r). `koffQ` / `kr` are accepted for interface
-# symmetry with cha_macro_tuple; `koffQ` defaults to a healthy release-off rate and is the
+# symmetry with cha_macro_tuple; `koffQ` defaults to CHA_DEPLOY_RELEASE_RATE and is the
 # promoted release rate used for k7f when `release_rate` is omitted, while `kr` is owned by
 # build_params (Haldane) and unused here.
 function cha_deploy_micro(enzyme::Symbol, mech, coords::AbstractDict; keq::Real,
-                          koffQ::Real = 1.0,
+                          koffQ::Real = ChaFit.CHA_DEPLOY_RELEASE_RATE,
                           release_rate::Real = koffQ,
                           release_eq::Real = ChaFit._default_release_eq(enzyme, coords),
                           kr::Union{Nothing,Real} = nothing,

@@ -69,8 +69,9 @@ end
 #                        CHA ADAPTER OVER THE RENDERER'S 2-CALL INTERFACE
 # ------------------------------------------------------------------------------------------
 # plot_fit_on_data(mech, ...) touches the mechanism only through metabolites(mech) and
-# rate_equation(mech, concs, params). ChaAdapter satisfies both from the deployed Cha law
-# at CHA_DEPLOY_RELEASE_RATE. It honors the renderer's PER-FIGURE keq: the renderer is
+# rate_equation(mech, concs, params). ChaAdapter satisfies both from the fitted Cha law
+# (ChaFit's default release rate, the one the law is fit and deployed at). It honors the
+# renderer's PER-FIGURE keq: the renderer is
 # called with Keq = :Apparent_Keq, so it passes each figure's apparent keq as params.Keq;
 # rate_equation rebuilds the macro tuple's Haldane kr for that keq. The Cha FORWARD rate is
 # keq-independent (kr enters only when products are present), so forward panels are
@@ -87,12 +88,9 @@ end
 
 EnzymeRates.metabolites(a::ChaAdapter) = Tuple(a.metab_syms)
 
-# The deploy-fiber macro tuple for one figure's apparent keq.
+# The fitted macro tuple for one figure's apparent keq.
 _cha_adapter_tuple(a::ChaAdapter, keq::Real) =
-    ChaFit.cha_macro_tuple(a.enzyme, a.coords;
-        keq = keq,
-        release_rate = ChaFit.CHA_DEPLOY_RELEASE_RATE,
-        variant = a.variant)
+    ChaFit.cha_macro_tuple(a.enzyme, a.coords; keq = keq, variant = a.variant)
 
 function EnzymeRates.rate_equation(a::ChaAdapter, concs, params)
     ratefn = a.enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
@@ -107,7 +105,7 @@ end
 # The adapter evaluates the Cha closed form (no upstream parameter names to translate).
 er_rate_equation(a::ChaAdapter, concs, params::NamedTuple) = EnzymeRates.rate_equation(a, concs, params)
 
-"Build a ChaAdapter for one (variant, mode). Curves are drawn at the DEPLOY release rate;
+"Build a ChaAdapter for one (variant, mode). Curves are drawn at the fit-and-deploy release rate;
 keq is supplied per figure by the renderer (:Apparent_Keq path). `default_keq` is only a
 fallback for a caller that passes no Keq."
 function build_cha_adapter(enzyme::Symbol, coords::AbstractDict, variant::Symbol,

@@ -12,10 +12,17 @@ const _PGD_ATP_FORMS = [:E, :E_N]
 # 3-product ordered release (CO2->Ru5P->NADPH) otherwise leaves two RE steps between the
 # catalysis-SS gauge anchor and the NADPH-SS step (SS->RE->RE->SS), which has NO free-enzyme
 # denominator term (gauged_denominator_coeffs needs one). Making Ru5P-release SS too
-# (SS->RE->SS->SS) restores the free-E term + a finite rate, and is biochemically correct
-# (Topham 1986: E·Ru5P isomerization/release is rate-limiting). The Ru5P-release reverse
+# (SS->RE->SS->SS) restores the free-E term + a finite rate. The Ru5P-release reverse
 # constant is a nuisance DOF (unidentifiable on forward data; reported unconstrained, not
 # pinned). See the spec's "Why V2 also makes Ru5P-release SS (3-product gauge constraint)".
+# (Corrected 2026-11-06: this said the Ru5P SS step "is biochemically correct (Topham 1986:
+# E·Ru5P isomerization/release is rate-limiting)". Topham, Matthews & Dalziel 1986 (Eur J
+# Biochem 156, p. 566) place a slow, possibly rate-limiting step after hydride transfer and
+# BEFORE Ru5P release: CO2 dissociation in their Scheme 1, or decarboxylation, or isomerization
+# of E·NADPH·Ru5P·CO2, with half-of-the-sites reactivity as the alternative reading. Price &
+# Cook 1996 (pp. 215, 219) put it in central-complex interconversion, with hydride transfer at
+# least partly limiting. Neither supports a slow Ru5P release, so this SS step rests only on
+# the gauge argument above.)
 function _pgd_consensus(ru5p_op::Symbol, nadph_op::Symbol)
     extra = _deadends([(_PGD_ATP_FORMS, :ATP)])
     _mech([:NADP, :PGA], [:Ru5P, :CO2, :NADPH], vcat([
@@ -56,8 +63,12 @@ function _pgd_v3()
 end
 
 # Cha base: Topham asymmetric-random Bi-Ter with the ONE gauge-mandated SS release
-# (Ru5P, Topham rate-limiting) + the V3 E·PGA NADPH dead-end (clean fwd-Ki/rev-Km channel).
+# (Ru5P) + the V3 E·PGA NADPH dead-end (clean fwd-Ki/rev-Km channel).
 # CO2 + NADPH release stay RE (PGD NADPH release is fast >800/s — base-only, no promotion).
+# Topham 1986 is the source of the topology (random binding, ordered release), not of the RE/SS
+# assignment: it rejects RE binary complexes in TEA (p. 565), and its Scheme 1 needs the slow
+# step to be CO2 release if it is a release step (p. 566). The >800/s is binary E·NADPH only.
+# (Corrected 2026-11-06: this said "Ru5P, Topham rate-limiting"; see the note above _pgd_consensus.)
 function _pgd_cha_base()
     extra = _deadends([(_PGD_ATP_FORMS, :ATP), (_PGD_NADPH_FWD_FORMS, :NADPH)])
     _mech([:NADP, :PGA], [:Ru5P, :CO2, :NADPH], vcat([
@@ -67,7 +78,7 @@ function _pgd_cha_base()
         ([:E_G, :NADP], [:E_NB], :(⇌)),
         ([:E_NB],       [:E_C],  :(<-->)),            # catalysis (forced SS, gauge anchor)
         ([:E_C], [:E_1, :CO2],   :(⇌)),               # CO2 release  (RE, first out)
-        ([:E_1], [:E_2, :Ru5P],  :(<-->)),            # Ru5P release (SS, Topham rate-limiting)
+        ([:E_1], [:E_2, :Ru5P],  :(<-->)),            # Ru5P release (SS; not Topham's slow step, see above)
         ([:E_2], [:E, :NADPH],   :(⇌)),               # NADPH release (RE, last)
     ], extra); regs=[:ATP])
 end
@@ -86,7 +97,7 @@ function _pgd_cha_base_noatp()
         ([:E_G, :NADP], [:E_NB], :(⇌)),
         ([:E_NB],       [:E_C],  :(<-->)),            # catalysis (forced SS, gauge anchor)
         ([:E_C], [:E_1, :CO2],   :(⇌)),               # CO2 release  (RE, first out)
-        ([:E_1], [:E_2, :Ru5P],  :(<-->)),            # Ru5P release (SS, Topham rate-limiting)
+        ([:E_1], [:E_2, :Ru5P],  :(<-->)),            # Ru5P release (SS; not Topham's slow step, see above)
         ([:E_2], [:E, :NADPH],   :(⇌)),               # NADPH release (RE, last)
     ], extra))
 end

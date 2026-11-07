@@ -55,10 +55,17 @@ deploy (promoted) variant per enzyme** — it is not a multi-variant panel:
   and `E_H` form one SS **super-node** `S = {E_C ⇌ E_H}`, internally RE-distributed
   by `r = PGLn/Kd_6PGLn`. The Cha C-factor is `C = 1 + kf/koffQ`.
 - **PGD → `:cha_base`** — Topham asymmetric-random Bi-Ter with the one
-  gauge-mandated SS release: **Ru5P-release** (Topham 1986 rate-limiting). CO₂ and
+  gauge-mandated SS release: **Ru5P-release**. CO₂ and
   NADPH release stay rapid-equilibrium (PGD's NADPH release is fast, >800 s⁻¹, so no
   silent fiber is promoted). Super-node `S = {E_C ⇌ E_1}`, RE-linked by
-  `s = CO2/Kd_CO2`.
+  `s = CO2/Kd_CO2`. Topham et al. 1986 (*Eur J Biochem* 156) supply the topology (random
+  binding, ordered release), not the RE/SS assignment: they place a slow, possibly
+  rate-limiting step after hydride transfer and before Ru5P release (CO₂ dissociation in
+  their Scheme 1, or decarboxylation, or isomerization of E·NADPH·Ru5P·CO₂), with
+  half-of-the-sites reactivity as the alternative reading (p. 566), and they reject
+  rapid-equilibrium binary complexes in TEA (p. 565). The >800 s⁻¹ is a lower bound for
+  binary E·NADPH only. *(Corrected 2026-11-06: this said "Ru5P-release (Topham 1986
+  rate-limiting)".)*
 
 An **additive** fully-rapid-equilibrium PGD variant, **`:full_re`**, is also
 registered (run it with `fit_consensus_equation(:pgd; variants=[:full_re])`). It keeps only catalysis at steady state
@@ -85,14 +92,25 @@ gauged out, so the kinetic-scale parameters are **fixed, not fit**:
 
 - `kf = 1.0`, `Et = 1.0` (kcat = 1 / unit-enzyme gauge);
 - the promoted SS-release rate (`release_rate`: `koffQ` for G6PD, the Ru5P-release
-  `koff` for PGD) is a **swept fiber** held at a healthy default. The fit *loss* is
-  insensitive to it because the only fiber-**invariant** forward observable is the
-  specificity constant `kcat/Km = kf/(alpha·Kd)`; the apparent `kcat` and `Km`
-  *individually* slide along the fiber (`kcat = kf·r/(kf+r)`, `Km = alpha·Kd/C`,
-  `C = 1+kf/r`), holding their ratio fixed. So `release_rate` is unidentifiable from the
-  forward corpus, **but any Km/kcat readoff must use the same `release_rate` the law is
-  deployed at** (`CHA_DEPLOY_RELEASE_RATE = 1e3`) or it reports a constant the deployed
-  model does not exhibit;
+  `koff` for PGD) is **fixed at `CHA_DEPLOY_RELEASE_RATE = 1e3`** (kf = 1 gauge units).
+  The fit, the `micro_parameters.jl` deploy block, the Km readoffs and the plots all use
+  this one value (`_default_release_rate` resolves to it), so the emitted constants are the
+  fitted law. The value is a **convention** (release fast relative to catalysis,
+  `C = 1+kf/r ≈ 1`), not a measurement. `release_rate` is free **only if `alpha` moves with
+  it**: in the forward law (P = 0) the shape depends on `alpha/C`, so `alpha/C`, and hence
+  `Km = alpha·Kd/C`, is what the data pin. Evaluating the same `alpha` at another rate is a
+  different law. Under the centered loss the overall scale is gauged out, so the
+  `kcat/Km = kf/(alpha·Kd)` value is meaningful only on the kf = 1 gauge; a refit at another
+  rate moves it along with `alpha`. On the G6PD corpus a full refit fits equally well at any
+  `koffQ` from 0.1 to 1e6 (see the report block below). **PGD's `koff` is not free the same
+  way:** with `KdRu` held at 1, a full refit of `:cha_base` Mode 1 gave loss 0.118 at `koff` = 1,
+  0.053 at 100, 0.025 at 1e3, 0.021 at 1e4 and 0.039 at 1e6, and `Km_PGA` moved from railed
+  values to about 50-60 µM. On that corpus `koff = 1e3` and `KdRu = 1` shape the fit, so they are
+  choices to revisit before deploying the PGD consensus law. **Run dirs with `package_version` < 0.10.0** were fit at
+  `release_rate = 1` (`C = 2`) but emitted and plotted the same `alpha` at 1e3, so their
+  `micro_parameters.jl`, reported Km's and plots describe a law with twice the fitted Km's and
+  a worse loss than `goodness_of_fit.csv` reports. Absolute mode keeps its own
+  `CHA_ABS_RELEASE_RATE = 1e8` and `:full_re` has no promoted release (`C = 1`); neither changed;
 - the reverse catalysis `kr` is **Haldane-determined** from `keq`.
 
 So the **free fit coordinates** (`cha_coords`, in `src/cha_fit.jl`) are exactly the
@@ -107,9 +125,9 @@ data-identifiable forward shape constants:
 
 The **apparent Michaelis constants** are NOT coords — they are **derived** readoffs
 `Km = alpha·Kd / C`, `C = 1+kf/release_rate` (`cha_apparent_km`): `Km_G6P` (G6PD);
-`Km_PGA`, `Km_NADP` (PGD). They are read at `CHA_DEPLOY_RELEASE_RATE` (so they match the
-deployed law) and surfaced with class `:derived`, each paired with its fiber-invariant
-specificity `kcatKm_* = kf/(alpha·Kd)` (`cha_specificity`). No mode pins or pulls an
+`Km_PGA`, `Km_NADP` (PGD). They are read at `CHA_DEPLOY_RELEASE_RATE`, the rate the law is
+fit and deployed at, and surfaced with class `:derived`, each paired with its specificity
+`kcatKm_* = kf/(alpha·Kd)` on the kf = 1 gauge (`cha_specificity`). No mode pins or pulls an
 apparent Km: PGD's Mode-2 soft `Km_PGA` anchor and Mode-3 `Km_PGA` override (the
 `_cha_anchor_penalty` / `cha_anchors` machinery) were retired 2026-10-21.
 
@@ -160,7 +178,7 @@ E_N + PGA  ⇌ E_NB       │
 E_G + NADP ⇌ E_NB       ┘
 E_NB → E_C   (SS — catalysis, gauge anchor)
 E_C ⇌ E_1 + CO2         (RE — CO2 out first; super-node {E_C ⇌ E_1})
-E_1 → E_2 + Ru5P        (SS — promoted Ru5P release, Topham rate-limiting)
+E_1 → E_2 + Ru5P        (SS — promoted Ru5P release; not Topham's slow step, see above)
 E_2 ⇌ E + NADPH         (RE — NADPH released last)
 ```
 
@@ -184,12 +202,18 @@ budget:
 - **G6PD:** the de-conflation **works** — Mode-1 data-identifies the cross-term
   `Ki_NADPH ≈ 37 µM (±7 µM)`, on the forward scale with a finite CI (not the reverse
   ~0.2–2.4 µM). But it reads **above** the 9–24 µM literature band; Mode 2 pins it to
-  15 µM.
-- **PGD:** the forward cross-term de-conflation was **refuted** on this corpus
-  (Mode 1 reports `Ki_NADPH` diagnostic/unconstrained), so it is **pin-only** 17 µM
-  (Cottreau) in Mode 2. `Km_PGA` is **not data-identified** — `alpha` rails to its
-  bound (the corpus lacks sub-Km [PGA] coverage). It is no longer anchored in any mode
-  (2026-10-21): the reported apparent `Km_PGA` is whatever the corpus gives. The high/unstable PGD leave-one-article-out CV traces to a
+  15 µM. *(This 37 µM figure predates 0.9.0, when `Km_NADPH_rev` was still anchored by
+  default, and 0.10.0, which fits at the deploy `koffQ`; `report.md` states the current
+  fitted value and its band position, so read it there.)*
+- **PGD (0.10.0 fit at the deploy `koff` = 1e3, `KdRu` = 1):** the earlier conclusion,
+  that the forward cross-term de-conflation was **refuted** (Mode 1 `Ki_NADPH`
+  diagnostic/unconstrained, `alpha` railed, `Km_PGA` not data-identified), came from fits at
+  `koff` = 1 and does **not** hold on this branch. Mode 1 now data-identifies `Ki_NADPH`
+  (about 22 µM), `Kd_PGA` is data-identified, and `alpha` is about 12, off its limit; the loss
+  fell 4.7-fold (0.118 to 0.025). **These new PGD values are not established:** the loss depends
+  on the fixed `koff` and `KdRu` (see the `koff` series above), so the identification may
+  reflect that choice. Mode 2 still pins `Ki_NADPH` to 17 µM (Cottreau). No mode anchors
+  `Km_PGA` (2026-10-21). The high/unstable PGD leave-one-article-out CV traces to a
   **forward-CO₂ product-inhibition coverage gap** (the leave-Weisz1985-out fold);
   trimmed CV ≈ G6PD's. *This diagnosis predates the 2026-10-21 corpus correction,
   which raised Weisz 1985 Fig 6A–6D `[CO2]` 10× (and 6C/6D `[6PGA]` 10×), and the
@@ -263,8 +287,12 @@ simulation-accuracy validation downstream in `PPP_Experiments` — not literatur
 agreement; a simpler law disagreeing with a historical assay value may just mean the
 assay isn't what the live parameter should be. Generalizes the prior `:no_atp`-only
 convention to every future re-derivation — **not retroactive**: the deployed
-full-G6PD law (mode2-pinned) and PGD (fit under the retired mode2/3 `Km_PGA` anchors) are
-grandfathered until re-derived.
+full-G6PD law (mode2-pinned) is grandfathered until re-derived. PGD has nothing to
+grandfather from this package: PentosePhosphatePathway.jl's `rate_PGD` is still the C2 law
+with the `PGD_K1`…`PGD_k7r` constants of 2026-04-07 (its `4829776`), which predate this
+package and the mode2/3 anchors, and no consensus PGD fit has been deployed. *(Corrected
+2026-11-06: this said the deployed PGD was "fit under the retired mode2/3 `Km_PGA` anchors".
+Those anchors applied only to the undeployed consensus PGD fits.)*
 `:no_atp` (`src/enzymes/g6pd.jl`) is the first law under the rule: its mode1 fit is
 fully data-identified, so mode1 is its deploy candidate.
 
@@ -458,9 +486,12 @@ plot_consensus_fit("results/G6PD_2026-07-16_smoke")
 | `report.md` | Per-mode macro tables, cross-mode agreement, the G6PD `koffQ` hybrid block, and the de-conflation caveat. |
 | `provenance.toml` | Package version / EnzymeRates SHA, budget, source corpus path (`data_csv`), row count, seed, smoke flag — reproducibility record. `_git_sha` reads `"unknown"` in an installed depot (no `.git` to inspect) — this is expected and already `try/catch`-guarded; the package version is the durable provenance handle for an installed copy. |
 
-`koffQ` is reported as a **hybrid** (`src/cha_koffq_report.jl`): deployed at a
-healthy swept default (flux-neutral), and *additionally* a reverse-weighted
-diagnostic value + wide CI + deploy↔data gap — report-only, never fed to deploy.
+The `koffQ` block (`src/cha_koffq_report.jl`) states the deploy convention and tabulates
+a profile: every free constant refit at each `koffQ`, with the PGLn-bearing rows up-weighted.
+Report-only, never fed to deploy. On the current corpus the profile is flat, because `alpha`
+moves with `C` and `Kd_6PGLn` absorbs the reverse-row effect (those rows sit at a single
+[NADPH]), so the corpus does not identify `koffQ`. Since 0.10.0 this replaces the old "data-identified
+koffQ" row, a scan with the constants held fixed that just returned the rate they were fit at.
 
 A `plots/` subdirectory is **not** written by the fit run itself — it is produced
 on demand by `plot_consensus_fit` (see [Plotting the fit over the
@@ -524,7 +555,7 @@ src/cha_fit.jl        cha_coords, gauge/fiber/Haldane assembly, centered-lograti
 src/cha_classify.jl   macro-coordinate identifiability (FD Hessian) + class assignment
 src/cha_invert.jl     closed-form macro↔micro readoff + koffQ fiber map (exactness anchor)
 src/cha_deploy.jl     closed-form macro→micro deploy inverse (micro_parameters.jl)
-src/cha_koffq_report.jl   G6PD koffQ hybrid report (swept deploy + reverse diagnostic)
+src/cha_koffq_report.jl   G6PD koffQ report (deploy convention + all-constants-refit profile)
 src/promotable.jl     declarative registry of promotable slow steps (G6PD nadph_release)
 
 src/enzymes/g6pd.jl, src/enzymes/pgd.jl
@@ -550,8 +581,9 @@ ext/FitRateEquationMakieExt.jl
                        (plot_consensus_fit), loads only when CairoMakie is loaded
 
 data/                  bundled corpora: G6PD_all_EnzymeData.csv (byte copy of
-                       PPP_Experiments fitting/G6PD/rate_eq/, 436 rows / 18 figures /
-                       6 articles; δ-lactone-only reverse data since 2026-11-03 — Beutler
+                       PPP_Experiments fitting/G6PD/rate_eq/, 477 rows / 20 figures /
+                       6 articles as of 2026-11-06 (436 / 18 before Mbata2026 Figs 1B,
+                       1C were added); δ-lactone-only reverse data since 2026-11-03 — Beutler
                        1986 Fig 2a in, Beutler Fig 3 and Gordon 1994 Fig 1A/1B γ-lactone
                        analogue rows out),
                        PGD_EnzymeData_with_CO2.csv (PGD: byte copy of

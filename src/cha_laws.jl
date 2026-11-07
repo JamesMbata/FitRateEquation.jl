@@ -93,8 +93,11 @@ export cha_rate_PGD_fullRE
 #
 # A = NADP, B = PGA (6-phosphogluconate); products released ORDERED CO2 -> Ru5P -> NADPH.
 # Random RE substrate binding + ordered product release. The Cha BASE promotes exactly ONE
-# release to steady state besides catalysis: Ru5P release (Topham 1986, rate-limiting). CO2
-# and NADPH release stay RAPID-EQUILIBRIUM. There is NO promoted silent fiber (base-only).
+# release to steady state besides catalysis: Ru5P release. CO2 and NADPH release stay
+# RAPID-EQUILIBRIUM. There is NO promoted silent fiber (base-only).
+# (Corrected 2026-11-06: this cited "Topham 1986, rate-limiting" for the Ru5P step. Topham et
+# al. place the slow step before Ru5P release (p. 566), and in their Scheme 1 it would be CO2
+# release, which is RE here. See the note in src/enzymes/pgd.jl.)
 #
 # Topology (mirrors the G6PD two-SS-segment super-node, derivations/cha_derive_pgd.py):
 #   catalysis E_NB --> E_C   SS  (kf = k5f gauge, kr = k5r Haldane-dep),

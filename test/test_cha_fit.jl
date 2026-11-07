@@ -225,10 +225,10 @@ end
     @test isapprox(fit.coords[:Km_NADPH_rev], 3.9e-6; rtol=1e-9)
 end
 
-@testset "apparent-Km readoff is taken at the DEPLOY koffQ (matches the deployed law)" begin
+@testset "apparent-Km readoff is taken at the fit-and-deploy koffQ" begin
     # Drift guard: the readoff default and the deploy call must read one constant.
     @test CHA_DEPLOY_RELEASE_RATE == 1.0e3
-    # Deployed G6PD Mode-1 coords.
+    # An older G6PD Mode-1 fit, used here only as numeric inputs to the readoff arithmetic.
     coords = Dict(:Kd_G6P => 2.744696154239118e-5, :Kd_NADP => 5.8175568579390255e-6,
                   :alpha => 3.4062212602741297)
     C_dep = 1 + 1.0 / CHA_DEPLOY_RELEASE_RATE
@@ -243,7 +243,7 @@ end
     @test isapprox(km_dep, 9.339702690871053e-5; rtol = 1e-6)            # 93.4 µM (numeric anchor)
 end
 
-@testset "cha_specificity (kcat/Km) is the koffQ-fiber INVARIANT" begin
+@testset "cha_specificity (kcat/Km): at FIXED alpha the release rate cancels" begin
     coords = Dict(:Kd_G6P => 2.744696154239118e-5, :Kd_NADP => 5.8175568579390255e-6,
                   :alpha => 3.4062212602741297)
     s = cha_specificity(:G6PD, coords, :Km_G6P)

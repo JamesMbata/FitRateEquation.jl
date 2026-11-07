@@ -7,7 +7,7 @@
 # Ki's, the bare-[NADPH] reverse-release Km). As in coeff space, the data_identified vs
 # unconstrained decision is made HERE, over cha_coords (in log10), via the Hessian of
 # cha_centered_logratio_loss. The cha_coords are FIXED named constants (no fiber / null-space:
-# the gauge kf/Et, the swept release_rate fiber, and the Haldane kr are all held outside the
+# the gauge kf/Et, the fixed release_rate, and the Haldane kr are all held outside the
 # coords), so every flat eigendirection is a genuinely unconstrained coordinate.
 #
 # This mirrors coeff_identifiability.jl::{coeff_identifiable_functions, classify_coords}
