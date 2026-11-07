@@ -550,8 +550,9 @@ ext/FitRateEquationMakieExt.jl
                        (plot_consensus_fit), loads only when CairoMakie is loaded
 
 data/                  bundled corpora: G6PD_all_EnzymeData.csv (byte copy of
-                       PPP_Experiments fitting/G6PD/rate_eq/, 436 rows / 18 figures /
-                       6 articles; δ-lactone-only reverse data since 2026-11-03 — Beutler
+                       PPP_Experiments fitting/G6PD/rate_eq/, 477 rows / 20 figures /
+                       6 articles as of 2026-11-06 (436 / 18 before Mbata2026 Figs 1B,
+                       1C were added); δ-lactone-only reverse data since 2026-11-03 — Beutler
                        1986 Fig 2a in, Beutler Fig 3 and Gordon 1994 Fig 1A/1B γ-lactone
                        analogue rows out),
                        PGD_EnzymeData_with_CO2.csv (PGD: byte copy of
