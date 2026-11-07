@@ -65,8 +65,7 @@ function _refit_at(mech, d_w::Dataset, base_coords::AbstractDict, pins::Abstract
     C_ratio = (1 + 1 / koffQ) / (1 + 1 / CHA_DEPLOY_RELEASE_RATE)
     u0 = [log10(s === :alpha ? base_coords[s] * C_ratio : base_coords[s]) for s in syms]
     pinned(u) = [haskey(pins, s) ? pins[s] : x for (s, x) in zip(syms, u)]
-    objective = u -> cha_centered_logratio_loss(:G6PD, mech, d_w, Dict(syms .=> 10 .^ pinned(u));
-                                                variant=variant, release_rate=koffQ)
+    objective = ChaFit._cha_objective(:G6PD, d_w, syms, pins; variant=variant, release_rate=koffQ)
     o = minimize(objective, clamp.(u0, lo, hi), 0.1; lower=lo, upper=hi, maxiter=300, maxtime=30.0,
                  seed=UInt64(1), verbosity=0)
     coords = Dict(syms .=> 10 .^ pinned(collect(xbest(o))))

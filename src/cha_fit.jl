@@ -111,34 +111,42 @@ end
 function cha_haldane_kr(enzyme::Symbol, coords::AbstractDict; keq::Real, release_rate::Real,
                         kf::Real, release_eq::Real = _default_release_eq(enzyme, coords),
                         variant::Symbol = :_deploy)
-    # Fully-RE PGD: no promoted-release fiber. Haldane comes straight from the RE dissociation
-    # constants: kr = kf·Kd_NADPH·Kd_Ru5P·Kd_CO2 / (Keq·α·Kd_NADP·Kd_PGA). release_rate/release_eq
-    # are inert here (fiber-free); they are accepted for signature parity with the cha_base call.
-    if enzyme === :PGD && variant === :full_re
-        return coords[:Kd_NADPH] * coords[:Kd_Ru5P] * coords[:Kd_CO2] * kf /
-               (coords[:Kd_NADP] * coords[:Kd_PGA] * coords[:alpha] * keq)
-    end
-    if enzyme === :G6PD
-        # Keq_app = Kd_6PGLn * Km_NADPH_rev * kf / (Kd_NADP * Kd_G6P * alpha * kr).
-        # release_eq == Km_NADPH_rev on the G6PD fiber.
-        return coords[:Kd_6PGLn] * release_eq * kf /
-               (coords[:Kd_NADP] * coords[:Kd_G6P] * coords[:alpha] * keq)
-    elseif enzyme === :PGD
-        # Keq_app = Kd_CO2 * Km_NADPH_rev * KdRu * kf / (Kd_NADP * Kd_PGA * alpha * kr).
-        # Km_NADPH_rev (coord) and KdRu (release_eq) enter independently.
-        return coords[:Kd_CO2] * coords[:Km_NADPH_rev] * release_eq * kf /
-               (coords[:Kd_NADP] * coords[:Kd_PGA] * coords[:alpha] * keq)
-    else
-        error("cha_haldane_kr: unknown enzyme $enzyme (expected :G6PD or :PGD)")
-    end
+    _haldane_kr(_cha_law(enzyme, variant), coords, keq, kf, release_eq)
 end
 
-# Default release equilibrium per enzyme (see module header).
-function _default_release_eq(enzyme::Symbol, coords::AbstractDict)
-    enzyme === :G6PD && return coords[:Km_NADPH_rev]
-    enzyme === :PGD  && return CHA_KDRU_DEFAULT
-    error("_default_release_eq: unknown enzyme $enzyme")
+# The rate law an (enzyme, variant) fits. Everything enzyme-specific in the loss below dispatches
+# on this function's type, so choosing the law once fixes the types of the whole row loop. Taking
+# these choices at run time from `enzyme::Symbol` on every row is what made the loss slow.
+function _cha_law(enzyme::Symbol, variant::Symbol = :_deploy)
+    enzyme === :G6PD && return cha_rate_G6PD
+    enzyme === :PGD  && return variant === :full_re ? cha_rate_PGD_fullRE : cha_rate_PGD
+    error("_cha_law: unknown enzyme $enzyme (expected :G6PD or :PGD)")
 end
+
+# Keq_app = Kd_6PGLn * Km_NADPH_rev * kf / (Kd_NADP * Kd_G6P * alpha * kr).
+# release_eq == Km_NADPH_rev on the G6PD fiber.
+@inline _haldane_kr(::typeof(cha_rate_G6PD), coords, keq, kf, release_eq) =
+    coords[:Kd_6PGLn] * release_eq * kf /
+    (coords[:Kd_NADP] * coords[:Kd_G6P] * coords[:alpha] * keq)
+
+# Keq_app = Kd_CO2 * Km_NADPH_rev * KdRu * kf / (Kd_NADP * Kd_PGA * alpha * kr).
+# Km_NADPH_rev (coord) and KdRu (release_eq) enter independently.
+@inline _haldane_kr(::typeof(cha_rate_PGD), coords, keq, kf, release_eq) =
+    coords[:Kd_CO2] * coords[:Km_NADPH_rev] * release_eq * kf /
+    (coords[:Kd_NADP] * coords[:Kd_PGA] * coords[:alpha] * keq)
+
+# Fully-RE PGD: no promoted-release fiber. Haldane comes straight from the RE dissociation
+# constants: kr = kf·Kd_NADPH·Kd_Ru5P·Kd_CO2 / (Keq·α·Kd_NADP·Kd_PGA). release_eq is inert here
+# (fiber-free); it is accepted for signature parity with the cha_base call.
+@inline _haldane_kr(::typeof(cha_rate_PGD_fullRE), coords, keq, kf, release_eq) =
+    coords[:Kd_NADPH] * coords[:Kd_Ru5P] * coords[:Kd_CO2] * kf /
+    (coords[:Kd_NADP] * coords[:Kd_PGA] * coords[:alpha] * keq)
+
+# Default release equilibrium per enzyme (see module header).
+_default_release_eq(enzyme::Symbol, coords) = _default_release_eq(_cha_law(enzyme), coords)
+@inline _default_release_eq(::typeof(cha_rate_G6PD), coords) = coords[:Km_NADPH_rev]
+@inline _default_release_eq(::Union{typeof(cha_rate_PGD),typeof(cha_rate_PGD_fullRE)}, coords) =
+    CHA_KDRU_DEFAULT
 
 # -----------------------------------------------------------------------------------------
 #   Assemble the FULL named tuple `cha_rate_*` consumes from (free coords + gauge/fiber/
@@ -152,59 +160,69 @@ function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
                          release_eq::Real = _default_release_eq(enzyme, coords),
                          kr::Union{Nothing,Real} = nothing,
                          variant::Symbol = :_deploy)
-    # PGD fully-RE variant: NO promoted SS-release fiber (no koff/kon; C=1). The reverse arm is
-    # carried entirely by the Haldane kr; the product Kd's (Kd_NADPH/Kd_Ru5P/Kd_CO2) are real
-    # coords. Early-return so the generic release-fiber path below is untouched.
-    # Effector dead-ends are appended ONLY when present as coords (default OFF → law uses Inf).
-    if enzyme === :PGD && variant === :full_re
-        krv = kr === nothing ?
-            cha_haldane_kr(enzyme, coords; keq=keq, release_rate=release_rate, kf=kf,
-                           release_eq=release_eq, variant=variant) : kr
-        tup = (; Kd_NADP  = coords[:Kd_NADP],
-                 Kd_PGA   = coords[:Kd_PGA],
-                 alpha    = coords[:alpha],
-                 Kd_NADPH = coords[:Kd_NADPH],
-                 Kd_Ru5P  = coords[:Kd_Ru5P],
-                 Kd_CO2   = coords[:Kd_CO2],
-                 kf = kf, kr = krv, Et = Et, Keq = keq)
-        for s in (:Ki_ATP, :Ki_ATP_EN, :Ki_NADPH)
-            haskey(coords, s) && (tup = merge(tup, NamedTuple{(s,)}((coords[s],))))
-        end
-        return tup
-    end
-    krv = kr === nothing ?
-        cha_haldane_kr(enzyme, coords; keq=keq, release_rate=release_rate, kf=kf,
-                       release_eq=release_eq) : kr
-    if enzyme === :G6PD
-        koffQ = release_rate
-        konQ  = koffQ / release_eq           # release_eq == Km_NADPH_rev on the G6PD fiber
-        return (; Kd_NADP   = coords[:Kd_NADP],
-                  Kd_G6P    = coords[:Kd_G6P],
-                  Kd_6PGLn  = coords[:Kd_6PGLn],
-                  alpha     = coords[:alpha],
-                  Km_NADPH_rev = coords[:Km_NADPH_rev],
-                  Ki_NADPH  = get(coords, :Ki_NADPH,  Inf),
-                  Ki_ATP    = get(coords, :Ki_ATP,    Inf),
-                  Ki_ATP_EG = get(coords, :Ki_ATP_EG, Inf),
-                  koffQ = koffQ, konQ = konQ, kf = kf, kr = krv, Et = Et,
-                  Keq = keq)
-    elseif enzyme === :PGD
-        koff = release_rate
-        kon  = koff / release_eq             # release_eq == KdRu (Ru5P-release equilibrium)
-        return (; Kd_NADP   = coords[:Kd_NADP],
-                  Kd_PGA    = coords[:Kd_PGA],
-                  alpha     = coords[:alpha],
-                  Kd_CO2    = coords[:Kd_CO2],
-                  Km_NADPH_rev = coords[:Km_NADPH_rev],
-                  Ki_NADPH  = coords[:Ki_NADPH],
-                  Ki_ATP    = get(coords, :Ki_ATP,    Inf),   # Inf for :no_atp (term absent)
-                  Ki_ATP_EN = get(coords, :Ki_ATP_EN, Inf),
-                  koff = koff, kon = kon, kf = kf, kr = krv, Et = Et,
-                  Keq = keq)
-    else
-        error("cha_macro_tuple: unknown enzyme $enzyme (expected :G6PD or :PGD)")
-    end
+    _macro_tuple(_cha_law(enzyme, variant), coords, keq, kf, Et, release_rate, release_eq, kr)
 end
+
+# `coords` is a Dict (public callers) or a NamedTuple (the fit objective, whose field names are
+# known to the compiler, which is what makes these tuples concretely typed).
+@inline _resolve_kr(::Nothing, law, coords, keq, kf, release_eq) =
+    _haldane_kr(law, coords, keq, kf, release_eq)
+@inline _resolve_kr(kr::Real, law, coords, keq, kf, release_eq) = kr
+
+@inline function _macro_tuple(law::typeof(cha_rate_G6PD), coords, keq, kf, Et, release_rate,
+                              release_eq, kr)
+    krv = _resolve_kr(kr, law, coords, keq, kf, release_eq)
+    koffQ = release_rate
+    konQ  = koffQ / release_eq           # release_eq == Km_NADPH_rev on the G6PD fiber
+    (; Kd_NADP   = coords[:Kd_NADP],
+       Kd_G6P    = coords[:Kd_G6P],
+       Kd_6PGLn  = coords[:Kd_6PGLn],
+       alpha     = coords[:alpha],
+       Km_NADPH_rev = coords[:Km_NADPH_rev],
+       Ki_NADPH  = get(coords, :Ki_NADPH,  Inf),
+       Ki_ATP    = get(coords, :Ki_ATP,    Inf),
+       Ki_ATP_EG = get(coords, :Ki_ATP_EG, Inf),
+       koffQ = koffQ, konQ = konQ, kf = kf, kr = krv, Et = Et,
+       Keq = keq)
+end
+
+@inline function _macro_tuple(law::typeof(cha_rate_PGD), coords, keq, kf, Et, release_rate,
+                              release_eq, kr)
+    krv = _resolve_kr(kr, law, coords, keq, kf, release_eq)
+    koff = release_rate
+    kon  = koff / release_eq             # release_eq == KdRu (Ru5P-release equilibrium)
+    (; Kd_NADP   = coords[:Kd_NADP],
+       Kd_PGA    = coords[:Kd_PGA],
+       alpha     = coords[:alpha],
+       Kd_CO2    = coords[:Kd_CO2],
+       Km_NADPH_rev = coords[:Km_NADPH_rev],
+       Ki_NADPH  = coords[:Ki_NADPH],
+       Ki_ATP    = get(coords, :Ki_ATP,    Inf),   # Inf for :no_atp (term absent)
+       Ki_ATP_EN = get(coords, :Ki_ATP_EN, Inf),
+       koff = koff, kon = kon, kf = kf, kr = krv, Et = Et,
+       Keq = keq)
+end
+
+# PGD fully-RE variant: NO promoted SS-release fiber (no koff/kon; C=1). The reverse arm is
+# carried entirely by the Haldane kr; the product Kd's (Kd_NADPH/Kd_Ru5P/Kd_CO2) are real coords.
+# Effector dead-ends are appended ONLY when present as coords (default OFF → law uses Inf).
+@inline function _macro_tuple(law::typeof(cha_rate_PGD_fullRE), coords, keq, kf, Et, release_rate,
+                              release_eq, kr)
+    krv = _resolve_kr(kr, law, coords, keq, kf, release_eq)
+    tup = (; Kd_NADP  = coords[:Kd_NADP],
+             Kd_PGA   = coords[:Kd_PGA],
+             alpha    = coords[:alpha],
+             Kd_NADPH = coords[:Kd_NADPH],
+             Kd_Ru5P  = coords[:Kd_Ru5P],
+             Kd_CO2   = coords[:Kd_CO2],
+             kf = kf, kr = krv, Et = Et, Keq = keq)
+    tup = _with_dead_end(tup, coords, :Ki_ATP)
+    tup = _with_dead_end(tup, coords, :Ki_ATP_EN)
+    _with_dead_end(tup, coords, :Ki_NADPH)
+end
+
+Base.@constprop :aggressive @inline _with_dead_end(tup, coords, s::Symbol) =
+    haskey(coords, s) ? merge(tup, NamedTuple{(s,)}((coords[s],))) : tup
 
 # -----------------------------------------------------------------------------------------
 #   Cha-form centered log-ratio loss. The Cha twin of coeff_centered_logratio_loss
@@ -226,63 +244,110 @@ end
 #   generalization that keeps that per-group-uniform property while letting keq vary ACROSS
 #   figures.
 # -----------------------------------------------------------------------------------------
-# SHARED per-row core: the group loop, per-figure keq resolution, macro-tuple assembly,
-# cha_rate_* evaluation, and the sign/finite `_SIGN_PENALTY` bookkeeping — everything both the
-# centered (variance) and absolute (uncentered) aggregators need. Fills `logratio` (per-row
-# `log|pred| - log|obs|`, NaN on the sign/finite penalty branch) and returns
-# `(penalty, groups)`, where `groups` is the per-group row-index sets in `unique(d.group)`
-# order. This is THE arithmetic that must never drift between modes. It performs NO
-# mean-centering — each aggregator applies its own reduction over `logratio`/`groups`.
+# What a loss needs from a Dataset that does not change between evaluations, worked out once:
+# the law, the per-group row-index sets in `unique(d.group)` order, each group's keq (a scalar
+# override if given, else the figure's own uniform d.keq), and two buffers the objective reuses.
+# It owns those buffers, so one instance must not be evaluated from two threads at once.
+struct _ChaLossData{L,D<:Dataset}
+    law::L
+    d::D
+    groups::Vector{Vector{Int}}
+    group_keq::Vector{Float64}
+    logratio::Vector{Float64}
+    finite::Vector{Float64}
+end
+
+function _ChaLossData(enzyme::Symbol, d::Dataset, keq::Union{Nothing,Real}, variant::Symbol)
+    groups = [findall(==(g), d.group) for g in unique(d.group)]
+    group_keq = map(groups) do idx
+        keq === nothing || return float(keq)
+        ks = unique(d.keq[idx])
+        length(ks) == 1 ||
+            error("_ChaLossData: keq not uniform within figure $(d.group[idx[1]]): $ks")
+        ks[1]
+    end
+    finite = sizehint!(Float64[], maximum(length, groups; init=0))
+    _ChaLossData(_cha_law(enzyme, variant), d, groups, group_keq, fill(NaN, nrows(d)), finite)
+end
+
+# SHARED per-row core: the group loop, macro-tuple assembly, cha_rate_* evaluation, and the
+# sign/finite `_SIGN_PENALTY` bookkeeping — everything both the centered (variance) and absolute
+# (uncentered) aggregators need. Fills `logratio` (per-row `log|pred| - log|obs|`, NaN on the
+# sign/finite penalty branch) and returns the penalty. This is THE arithmetic that must never
+# drift between modes. It performs NO mean-centering — each aggregator applies its own reduction.
+function _fill_logratios!(logratio, data::_ChaLossData, coords, kf, Et, release_rate, release_eq, kr)
+    penalty = 0.0
+    for (idx, keq) in zip(data.groups, data.group_keq)
+        m = _macro_tuple(data.law, coords, keq, kf, Et, release_rate, release_eq, kr)
+        penalty = _fill_group_logratios!(logratio, data.law, m, data.d, idx, penalty)
+    end
+    penalty
+end
+
+# Function barrier: compiled for the concrete law and macro tuple, so no row dispatches at run
+# time even when a public caller's coords Dict left `m` with an abstract inferred type.
+function _fill_group_logratios!(logratio, law::L, m, d::Dataset, idx, penalty) where {L}
+    for i in idx
+        vunit = law(m; _law_row_kwargs(law, d.concs[i])...)
+        # Per-row enzyme concentration is a LINEAR prefactor (v = Et·kcat·f): the macro
+        # tuple stays at the unit gauge (scalar Et kwarg, default 1.0) and d.Et[i] scales
+        # the prediction. NaN (relative mode / no [G6PD] column) => 1.0, a strict no-op —
+        # so the centered path is byte-identical (locked by test_cha_fit.jl fold-order test).
+        eti = isnan(d.Et[i]) ? 1.0 : d.Et[i]
+        v = eti * vunit
+        o = d.rate[i]
+        if !isfinite(v) || v == 0 || sign(v) != sign(o)
+            penalty += _SIGN_PENALTY
+            logratio[i] = NaN
+        else
+            logratio[i] = log(abs(v)) - log(abs(o))
+        end
+    end
+    penalty
+end
+
+# Fills caller-owned `logratio`, returning `(penalty, groups)`. Row-level access for tests.
 function _cha_row_logratios!(logratio, enzyme::Symbol, mech, d::Dataset, coords::AbstractDict;
                              keq::Union{Nothing,Real}=nothing, kf::Real = 1.0, Et::Real = 1.0,
                              release_rate::Real = _default_release_rate(enzyme),
                              release_eq::Real = _default_release_eq(enzyme, coords),
                              kr::Union{Nothing,Real} = nothing, variant::Symbol = :_deploy)
-    cha_rate_enz = enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
-                   enzyme === :PGD  ? (variant === :full_re ? ChaLaws.cha_rate_PGD_fullRE :
-                                                              ChaLaws.cha_rate_PGD) :
-                   error("_cha_row_logratios!: unknown enzyme $enzyme")
-    penalty = 0.0
-    # Per-group row-index sets in unique(d.group) order (matches the old findall-per-group loop).
-    groups = [findall(==(g), d.group) for g in unique(d.group)]
-    for idx in groups
-        # keq for this figure: scalar override if given, else the figure's own (uniform) d.keq.
-        keq_g = if keq === nothing
-            ks = unique(d.keq[idx])
-            length(ks) == 1 ||
-                error("_cha_row_logratios!: keq not uniform within figure $(d.group[idx[1]]): $ks")
-            ks[1]
-        else
-            keq
-        end
-        m = cha_macro_tuple(enzyme, coords; keq=keq_g, kf=kf, Et=Et,
-                            release_rate=release_rate, release_eq=release_eq, kr=kr,
-                            variant=variant)
-        for i in idx
-            vunit = cha_rate_enz(m; _cha_row_kwargs(enzyme, d.concs[i])...)
-            # Per-row enzyme concentration is a LINEAR prefactor (v = Et·kcat·f): the macro
-            # tuple stays at the unit gauge (scalar Et kwarg, default 1.0) and d.Et[i] scales
-            # the prediction. NaN (relative mode / no [G6PD] column) => 1.0, a strict no-op —
-            # so the centered path is byte-identical (locked by test_cha_fit.jl fold-order test).
-            eti = isnan(d.Et[i]) ? 1.0 : d.Et[i]
-            v = eti * vunit
-            o = d.rate[i]
-            if !isfinite(v) || v == 0 || sign(v) != sign(o)
-                penalty += _SIGN_PENALTY
-                logratio[i] = NaN
-            else
-                logratio[i] = log(abs(v)) - log(abs(o))
-            end
-        end
-    end
-    (penalty, groups)
+    data = _ChaLossData(enzyme, d, keq, variant)
+    penalty = _fill_logratios!(logratio, data, coords, kf, Et, release_rate, release_eq, kr)
+    (penalty, data.groups)
 end
 
-# Thin CENTERED aggregator: per-(Article,Fig) mean-centered variance of the shared core's
-# log-ratios. The fold order is byte-identical to the pre-refactor two-loop structure —
-# `total = penalty` first, THEN each group's variance added in `groups` order — because float
-# addition is not associative (locked bitwise by test_cha_fit.jl's fold-order test). An empty
-# group is skipped, exactly reproducing the old `+= 0.0` no-op for finite `total`.
+# CENTERED reduction: per-(Article,Fig) mean-centered variance of the shared core's log-ratios.
+# The fold order is byte-identical to the pre-refactor two-loop structure — `total = penalty`
+# first, THEN each group's variance added in `groups` order — because float addition is not
+# associative (locked bitwise by test_cha_fit.jl's fold-order test). An empty group is skipped,
+# exactly reproducing the old `+= 0.0` no-op for finite `total`. `sum` stays on a Vector rather
+# than a hand-written loop: it reassociates additions, so a plain loop can differ in the last bits.
+function _centered_loss(data::_ChaLossData, penalty)
+    total = penalty
+    finite = data.finite
+    for idx in data.groups
+        empty!(finite)
+        for i in idx
+            x = data.logratio[i]
+            isfinite(x) && push!(finite, x)
+        end
+        isempty(finite) && continue
+        μ = sum(finite) / length(finite)
+        total += sum(x -> (x - μ)^2, finite)
+    end
+    total / nrows(data.d)
+end
+
+# ABSOLUTE reduction: UNCENTERED sum-of-squares of the shared core's log-ratios.
+function _absolute_loss(data::_ChaLossData, penalty)
+    total = penalty
+    for x in data.logratio
+        isfinite(x) && (total += x * x)
+    end
+    total / nrows(data.d)
+end
+
 function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
                                     coords::AbstractDict; keq::Union{Nothing,Real}=nothing,
                                     kf::Real = 1.0, Et::Real = 1.0,
@@ -290,39 +355,24 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
                                     release_eq::Real = _default_release_eq(enzyme, coords),
                                     kr::Union{Nothing,Real} = nothing,
                                     variant::Symbol = :_deploy)
-    n = nrows(d)
-    logratio = fill(NaN, n)
-    penalty, groups = _cha_row_logratios!(logratio, enzyme, mech, d, coords; keq=keq, kf=kf,
-        Et=Et, release_rate=release_rate, release_eq=release_eq, kr=kr, variant=variant)
-    total = penalty
-    for idx in groups
-        vals = filter(isfinite, logratio[idx])
-        isempty(vals) && continue
-        μ = sum(vals) / length(vals)
-        total += sum(x -> (x - μ)^2, vals)
-    end
-    total / n
+    data = _ChaLossData(enzyme, d, keq, variant)
+    _centered_loss(data, _fill_logratios!(data.logratio, data, coords, kf, Et, release_rate,
+                                          release_eq, kr))
 end
 
-# Thin ABSOLUTE aggregator: UNCENTERED sum-of-squares of the shared core's log-ratios. Unlike
-# the centered loss it does NOT subtract a per-group mean, so between-condition absolute rate
-# magnitudes become discriminating signal (§2 of the design). Per-row `d.Et` enters the core as
-# a linear prefactor and the caller supplies `kf = kcat` at `release_rate = CHA_ABS_RELEASE_RATE`
-# (fiber-free C = 1). The scalar `Et` gauge stays 1.0 — the per-row scale lives in `d.Et`.
+# Unlike the centered loss, the ABSOLUTE loss does NOT subtract a per-group mean, so
+# between-condition absolute rate magnitudes become discriminating signal (§2 of the design).
+# Per-row `d.Et` enters the core as a linear prefactor and the caller supplies `kf = kcat` at
+# `release_rate = CHA_ABS_RELEASE_RATE` (fiber-free C = 1). The scalar `Et` gauge stays 1.0 — the
+# per-row scale lives in `d.Et`.
 function cha_absolute_logratio_loss(enzyme::Symbol, mech, d::Dataset, coords::AbstractDict;
         keq::Union{Nothing,Real}=nothing, kf::Real=1.0,
         release_rate::Real = CHA_ABS_RELEASE_RATE,
         release_eq::Real = _default_release_eq(enzyme, coords),
         kr::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy)
-    n = nrows(d)
-    logratio = fill(NaN, n)
-    penalty, _ = _cha_row_logratios!(logratio, enzyme, mech, d, coords; keq=keq, kf=kf,
-        Et=1.0, release_rate=release_rate, release_eq=release_eq, kr=kr, variant=variant)
-    total = penalty
-    for x in logratio
-        isfinite(x) && (total += x * x)
-    end
-    total / n
+    data = _ChaLossData(enzyme, d, keq, variant)
+    _absolute_loss(data, _fill_logratios!(data.logratio, data, coords, kf, 1.0, release_rate,
+                                          release_eq, kr))
 end
 
 # Scale-aware scoring of a FITTED coords Dict (as returned by cha_fit_candidate). This is the
@@ -345,19 +395,15 @@ end
 # Map a per-row concentration NamedTuple to the keyword args of the enzyme's Cha law,
 # pulling each metabolite by field name (absent field => 0.0, the law's "species absent").
 _cha_field(cc, s) = hasproperty(cc, s) ? getproperty(cc, s) : 0.0
-function _cha_row_kwargs(enzyme::Symbol, cc)
-    if enzyme === :G6PD
-        return (NADP = _cha_field(cc, :NADP), G6P = _cha_field(cc, :G6P),
-                NADPH = _cha_field(cc, :NADPH), PGLn = _cha_field(cc, :PGLn),
-                ATP = _cha_field(cc, :ATP))
-    elseif enzyme === :PGD
-        return (NADP = _cha_field(cc, :NADP), PGA = _cha_field(cc, :PGA),
-                Ru5P = _cha_field(cc, :Ru5P), CO2 = _cha_field(cc, :CO2),
-                NADPH = _cha_field(cc, :NADPH), ATP = _cha_field(cc, :ATP))
-    else
-        error("_cha_row_kwargs: unknown enzyme $enzyme")
-    end
-end
+_cha_row_kwargs(enzyme::Symbol, cc) = _law_row_kwargs(_cha_law(enzyme), cc)
+@inline _law_row_kwargs(::typeof(cha_rate_G6PD), cc) =
+    (NADP = _cha_field(cc, :NADP), G6P = _cha_field(cc, :G6P),
+     NADPH = _cha_field(cc, :NADPH), PGLn = _cha_field(cc, :PGLn),
+     ATP = _cha_field(cc, :ATP))
+@inline _law_row_kwargs(::Union{typeof(cha_rate_PGD),typeof(cha_rate_PGD_fullRE)}, cc) =
+    (NADP = _cha_field(cc, :NADP), PGA = _cha_field(cc, :PGA),
+     Ru5P = _cha_field(cc, :Ru5P), CO2 = _cha_field(cc, :CO2),
+     NADPH = _cha_field(cc, :NADPH), ATP = _cha_field(cc, :ATP))
 
 # THE promoted-release rate: the fit, the deployed law (micro_parameters.jl, the cha_deploy_micro
 # default), the Km readoff and the plotted curves all use this one value, so the emitted constants
@@ -447,26 +493,50 @@ function cha_specificity(enzyme::Symbol, coords::AbstractDict, which::Symbol; kf
     kf / (coords[:alpha] * kd)
 end
 
-# Pins: override certain coordinates at fixed log10 values during the fit (Mode-2 twin of
-# _coeff_loss_with_pins, coeff_fit.jl).
-function _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins;
-                             keq::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy,
-                             scale::Symbol=:relative)
-    if !isempty(pins)
-        u = collect(u)
-        for (idx, k) in enumerate(coords_syms)
-            haskey(pins, k) && (u[idx] = pins[k])
-        end
-    end
-    coords_dict = Dict(coords_syms .=> 10 .^ u)
-    if scale === :absolute
-        # :kcat is a coord in absolute mode; pop it out of the binding-constant dict and pass
-        # it as kf at the fiber-free release rate (C=1).
-        kcat = pop!(coords_dict, :kcat)
-        return cha_absolute_logratio_loss(enzyme, mech, d, coords_dict;
-                   keq=keq, kf=kcat, release_rate=CHA_ABS_RELEASE_RATE, variant=variant)
-    end
-    cha_centered_logratio_loss(enzyme, mech, d, coords_dict; keq=keq, variant=variant)
+# The objective CMA-ES minimizes: log10 coords -> loss, with no allocation and no run-time
+# dispatch. The coordinate names `S` live in the type, so coords become a NamedTuple the compiler
+# can see through. Pins override certain coordinates at fixed log10 values (Mode-2 twin of
+# _coeff_loss_with_pins, coeff_fit.jl). Absolute objectives carry :kcat as a coord and pass it as
+# kf at the fiber-free release rate (C=1). test_loss_speed.jl gates all of this.
+struct _ChaObjective{S,N,Absolute,D<:_ChaLossData}
+    data::D
+    is_pinned::NTuple{N,Bool}
+    pin_log10::NTuple{N,Float64}
+    release_rate::Float64
+end
+
+function _cha_objective(enzyme::Symbol, d::Dataset, coords_syms, pins::AbstractDict;
+                        keq::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy,
+                        scale::Symbol=:relative,
+                        release_rate::Real = scale === :absolute ? CHA_ABS_RELEASE_RATE :
+                                                                   _default_release_rate(enzyme))
+    absolute = scale === :absolute
+    absolute && !(:kcat in coords_syms) &&
+        error("_cha_objective: absolute scale needs a :kcat coord, got $(coords_syms)")
+    S = Tuple(coords_syms)
+    data = _ChaLossData(enzyme, d, keq, variant)
+    is_pinned = map(s -> haskey(pins, s), S)
+    pin_log10 = map(s -> Float64(get(pins, s, NaN)), S)
+    _ChaObjective{S,length(S),absolute,typeof(data)}(data, is_pinned, pin_log10, float(release_rate))
+end
+
+@inline _coords_at(o::_ChaObjective{S,N}, u) where {S,N} =
+    NamedTuple{S}(ntuple(i -> 10 ^ (o.is_pinned[i] ? o.pin_log10[i] : u[i]), Val(N)))
+
+function (o::_ChaObjective{S,N,false})(u) where {S,N}
+    coords = _coords_at(o, u)
+    data = o.data
+    release_eq = _default_release_eq(data.law, coords)
+    _centered_loss(data, _fill_logratios!(data.logratio, data, coords, 1.0, 1.0, o.release_rate,
+                                          release_eq, nothing))
+end
+
+function (o::_ChaObjective{S,N,true})(u) where {S,N}
+    coords = _coords_at(o, u)
+    data = o.data
+    release_eq = _default_release_eq(data.law, coords)
+    _absolute_loss(data, _fill_logratios!(data.logratio, data, coords, coords[:kcat], 1.0,
+                                          o.release_rate, release_eq, nothing))
 end
 
 # -----------------------------------------------------------------------------------------
@@ -485,8 +555,7 @@ function cha_fit_candidate(enzyme::Symbol, mech, d::Dataset; n_restarts::Int=8,
                            variant::Symbol=:_deploy, scale::Symbol=:relative)
     coords_syms = cha_coords(enzyme, variant; scale=scale)
     lo, hi = cha_coord_bounds(enzyme, variant; scale=scale)
-    objective = u -> _cha_loss_with_pins(enzyme, mech, d, u, coords_syms, pins;
-                                         keq=keq, variant=variant, scale=scale)
+    objective = _cha_objective(enzyme, d, coords_syms, pins; keq=keq, variant=variant, scale=scale)
     best = (u=fill(NaN, length(coords_syms)), loss=Inf)
     endpoints = Vector{Float64}[]
     losses = Float64[]

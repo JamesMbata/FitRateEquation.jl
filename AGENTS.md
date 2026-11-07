@@ -541,6 +541,20 @@ or its ordering changed. Either the change is a bug, or the fixtures need a
 deliberate, reviewed regeneration — do not silently update them to make the test
 pass.
 
+## Fit speed: the loss must not allocate or dispatch
+
+CMA-ES calls the objective thousands of times per restart, so its cost sets the cost of a
+run. `_cha_objective` (`src/cha_fit.jl`) works out each figure's rows and keq once per fit
+(`_ChaLossData`) and picks the rate law once (`_cha_law`). Everything enzyme-specific then
+dispatches on that law's type, so no row chooses anything at run time. Do not look up
+`enzyme::Symbol` or build a `Dict` inside the row loop: that cost about 10x on 0.10.0.
+
+`test/test_loss_speed.jl` compares the objective, the public loss functions and a seeded fit
+with `==` against `test/frozen_cha_loss.jl`, a verbatim copy of the 0.10.0 loss. It also
+requires zero allocation, an inferred `Float64`, and at least 4x the frozen loss's speed. Do not
+edit the frozen copy to make a test pass; a deliberate change to the arithmetic means updating
+it in the same reviewed change.
+
 ## Layout
 
 ```
