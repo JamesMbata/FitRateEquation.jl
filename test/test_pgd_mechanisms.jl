@@ -13,9 +13,10 @@ using Test
         @test s in mets1
     end
     # RE: one SS step (catalysis). V2 has THREE SS steps: catalysis gauge anchor +
-    # Ru5P-release (rate-limiting, Topham) + NADPH-release (de-conflation). The Ru5P-SS
-    # step is required for a working apparent-constant gauge on the 3-product mechanism
-    # (see the V2 mechanism comment / spec).
+    # Ru5P-release (not Topham's slow step, which they place before Ru5P release,
+    # p. 566) + NADPH-release (de-conflation). The Ru5P-SS step is required for a
+    # working apparent-constant gauge on the 3-product mechanism (see the V2
+    # mechanism comment / spec).
     @test count(st -> st[3] == false, er_reactions(v1)) == 1
     @test count(st -> st[3] == false, er_reactions(v2)) == 3
     # V2 has strictly more free coordinates than V1 (the SS-release reverse DOFs) —

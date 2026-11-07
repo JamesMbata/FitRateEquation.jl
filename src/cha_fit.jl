@@ -58,7 +58,8 @@ using Random, LinearAlgebra
 using Statistics: median
 
 # Healthy Ru5P-release equilibrium nuisance default (KdRu = koff/kon) for PGD. Ru5P release is
-# the Topham 1986 rate-limiting promoted step; on the forward+product-inhibition parity gate
+# the one promoted SS release (not Topham 1986's slow step, which they place before Ru5P
+# release, p. 566; see src/enzymes/pgd.jl); on the forward+product-inhibition parity gate
 # the reverse arm is ~0, so KdRu is inert there and the exact value affects only the
 # diagnostic both-product shape. Chosen as a neutral mid-band dimensionless release
 # equilibrium (observed readoff KdRu spans ~1e-2..1e0 in these rate-constant-ratio units).
