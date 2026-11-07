@@ -118,8 +118,9 @@ Add `outdir="my_results"` to choose where the output folder is written.
 
 ### Which rate law you're fitting
 
-Each enzyme has one **deployed consensus rate law** — the equation wired into the
-downstream `PentosePhosphatePathway.jl` simulation — plus a few alternative laws
+Each enzyme has one **consensus rate law** — for G6PD the equation wired into the
+downstream `PentosePhosphatePathway.jl` simulation; the PGD consensus law has not been
+deployed there — plus a few alternative laws
 you can fit for comparison. They all fit the same corpus and write the same eight
 output files; they differ only in the structure of the rate equation (which
 product-release steps are treated as steady-state, and which substrate/product
@@ -138,7 +139,7 @@ are thin aliases for the deployed-law call, kept for discoverability.
 | G6PD | Ablation — drops the E·G6P·NADPH dead-end | `fit_consensus_equation(:g6pd; variants=[:no_g6p_nadph_deadend])` |
 | G6PD | Ablation — drops both G6P dead-ends | `fit_consensus_equation(:g6pd; variants=[:no_g6p_both_deadends])` |
 | G6PD | Pure rapid-equilibrium form (conflation diagnostic; not deployable) | `fit_consensus_equation(:g6pd; variants=[:RE_rate_eq])` |
-| PGD | **Consensus law (deployed)** — Topham Bi-Ter, steady-state Ru5P release | `run_pgd()` or `fit_consensus_equation(:pgd)` |
+| PGD | **Consensus law (not deployed; PentosePhosphatePathway.jl still uses an older C2 law)** — Topham Bi-Ter, steady-state Ru5P release | `run_pgd()` or `fit_consensus_equation(:pgd)` |
 | PGD | Fully rapid-equilibrium (evaluation only) | `fit_consensus_equation(:pgd; variants=[:full_re])` |
 | PGD | ATP-free — the consensus law with both ATP dead-ends removed (evaluation only; keeps every row) | `fit_consensus_equation(:pgd; variants=[:no_atp])` |
 
@@ -180,7 +181,12 @@ Every run writes eight files to its output folder:
   can actually pin down versus which are underdetermined.
 - **`micro_parameters.jl`** — the fitted result rewritten as a ready-to-use
   Julia parameter block, for anyone wiring this rate law into a larger
-  simulation.
+  simulation. These constants are the law that was fitted: they reproduce the
+  in-sample loss in `goodness_of_fit.csv`. The product-release rate in the block
+  (`koff_*` = 1000 on a scale where catalysis is 1) is a convention meaning "release
+  is fast compared to catalysis", not a measurement. Results from versions before
+  0.10.0 do not have this property: they were fitted at a release rate of 1 but
+  written out at 1000, which doubles the apparent Km values, so refit before using them.
 - **`report.md`** — a plain-language written summary of the fit, readable
   without opening any of the other files.
 - **`provenance.toml`** — a record of exactly how the run was produced

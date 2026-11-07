@@ -8,9 +8,10 @@
 # `EnzymeRates.rate_equation` exactly (A2 exactness anchor, rtol 1e-10).
 #
 # `cha_micro_from_macro_G6PD(mac; koffQ)` is the closed-form fiber map: it slides the
-# promoted release rate koffQ to a new value, co-adjusting (alpha, konQ) so that every
-# DATA-IDENTIFIABLE macro constant (Kd's, Ki's, apparent Km's which depend only on alpha/C,
-# and Km_NADPH_rev) is invariant. cha_rate_G6PD is therefore koffQ-invariant on the fiber.
+# promoted release rate koffQ to a new value, co-adjusting (alpha, konQ) so that the Kd's, Ki's,
+# Km_NADPH_rev and the apparent Km's (which depend only on alpha/C) are invariant.
+# cha_rate_G6PD's shape on P=0 rows is therefore koffQ-invariant on the fiber (its scale moves
+# as kf/C); on P>0 rows it is not, because this map holds Kd_6PGLn and kr fixed.
 #
 # Symbol/constant bindings (introspected from v2_mechanism(), 2026-06-10):
 #   catalysis E_NB<-->E_C  : kf = k5f (gauge=1), kr = k5r (Haldane-dependent)

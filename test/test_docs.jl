@@ -67,6 +67,12 @@ using Test
     # silently. Same rule as the contract break above — artifact changes must be documented.
     @test occursin("sorted alphabetically", agents)
 
+    # The fit and deploy share one release rate, stated as a convention (0.10.0). The old claim
+    # that the fit could sit anywhere with alpha unchanged must not come back.
+    @test occursin("is a **convention**", agents)
+    @test occursin("**only if `alpha` moves with", agents)
+    @test !occursin("flux-neutral", agents)
+
     # Absolute-scale mode (G6PD): the dedicated section, the explicit pins override, and the
     # required per-row enzyme-concentration column must all be documented in the user guide.
     @test occursin("Absolute-scale", readme)

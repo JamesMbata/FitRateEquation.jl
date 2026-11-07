@@ -72,7 +72,9 @@ using Test
     @test findfirst("leave-one-article-out", rep).start < findfirst("leave-one-figure-out", rep).start
     @test occursin("mode1 ↔ mode2", rep)
     @test occursin("koffQ hybrid", rep)
-    @test occursin("data-identified koffQ", rep)
+    @test occursin("all constants refit", rep)
+    @test occursin("is a convention", rep)
+    @test !occursin("data-identified koffQ", rep)
     # micro_parameters.jl carries the closed-form deploy block for the deploy variant.
     mp = read(joinpath(outdir, "micro_parameters.jl"), String)
     @test occursin("SS_NADPH_release_rate_eq", mp)

@@ -8,7 +8,8 @@
 # not fit:
 #   - kf = 1.0, Et = 1.0          (kcat=1 / unit-enzyme gauge)
 #   - the promoted SS-release rate (`release_rate`: koffQ for G6PD, the Ru5P-release koff for
-#     PGD) is a SWEPT FIBER held at a healthy default -- NOT a fit coord,
+#     PGD) is fixed at CHA_DEPLOY_RELEASE_RATE, the same value the law is deployed and plotted
+#     at -- NOT a fit coord,
 #   - the promoted-release on-rate (konQ / kon) is DERIVED from `release_rate / release_eq`,
 #   - kr (reverse catalysis) is HALDANE-determined from `keq` -- NOT a free fit coord.
 #
@@ -65,7 +66,7 @@ const CHA_KDRU_DEFAULT = 1.0
 
 # -----------------------------------------------------------------------------------------
 #   Free fit coordinates: the data-identifiable forward shape constants. EXCLUDES the gauge
-#   (kf, Et), the swept fiber (release_rate = koffQ / koff and its on-rate konQ / kon), and
+#   (kf, Et), the fixed release rate (release_rate = koffQ / koff and its on-rate konQ / kon), and
 #   the Haldane-determined reverse catalysis kr.
 # -----------------------------------------------------------------------------------------
 # `scale=:absolute` appends the turnover coord `:kcat` for G6PD (the single source of truth
@@ -141,8 +142,9 @@ end
 
 # -----------------------------------------------------------------------------------------
 #   Assemble the FULL named tuple `cha_rate_*` consumes from (free coords + gauge/fiber/
-#   Haldane inputs). Defaults give the FIT path (kf=Et=1, healthy release_rate/release_eq,
-#   Haldane kr); the round-trip test overrides them with the readoff's actual values.
+#   Haldane inputs). Defaults give the fit-and-deploy law (kf=Et=1, CHA_DEPLOY_RELEASE_RATE,
+#   per-enzyme release_eq, Haldane kr); the round-trip test overrides them with the readoff's
+#   actual values.
 # -----------------------------------------------------------------------------------------
 function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
                          kf::Real = 1.0, Et::Real = 1.0,
@@ -209,11 +211,11 @@ end
 #   (coeff_fit.jl): IDENTICAL per-(Article,Fig) centered-loss arithmetic (sign/finite
 #   penalty, per-group mean-centering, total/n), only the forward-rate evaluation differs --
 #   the Cha law cha_rate_* through the macro tuple assembled from the named coordinates, the
-#   gauge (kf, Et), the swept fiber (release_rate), its release equilibrium (release_eq, used
-#   for the on-rate and -- on the G6PD fiber -- the Haldane), and the Haldane kr.
+#   gauge (kf, Et), the fixed release rate (release_rate), its release equilibrium (release_eq,
+#   used for the on-rate and -- on the G6PD fiber -- the Haldane), and the Haldane kr.
 #
-#   Defaults match cha_macro_tuple so the loss and the tuple agree: kf=Et=1, healthy
-#   release_rate, per-enzyme release_eq, Haldane kr.
+#   Defaults match cha_macro_tuple so the loss and the tuple agree: kf=Et=1,
+#   CHA_DEPLOY_RELEASE_RATE, per-enzyme release_eq, Haldane kr.
 #
 #   `keq`: `nothing` (default) -> PER-FIGURE keq, built once per (Article,Fig) group from
 #   that figure's own (asserted-uniform) `d.keq`. A scalar `keq` reproduces the old
@@ -357,26 +359,19 @@ function _cha_row_kwargs(enzyme::Symbol, cc)
     end
 end
 
-# FIT-fiber promoted-release rate default (the swept fiber used while FITTING). Under the
-# per-(Article,Fig) mean-centered log-ratio loss the overall scale is gauged out, and the only
-# fiber-INVARIANT shape observable the forward+product-inhibition corpus constrains is the
-# SPECIFICITY constant kcat/Km = kf/(alpha*Kd) (`cha_specificity`). The apparent kcat and the
-# apparent Km individually are NOT release-rate-invariant: along the fiber they trade off as
-# kcat = kf*r/(kf+r) and Km = alpha*Kd*r/(kf+r) = alpha*Kd/C (C = 1+kf/r), holding kcat/Km
-# fixed. So the FIT can sit at any r (koffQ is unidentifiable) — but a Km/kcat READOFF must use
-# the SAME r the law is DEPLOYED at (`CHA_DEPLOY_RELEASE_RATE`), or it reports a constant the
-# deployed model does not exhibit. (At r=1 -> C=2 -> Km=alpha*Kd/2; at the deploy r=1e3 ->
-# C~1.001 -> Km~alpha*Kd, the textbook catalysis-limited value.)
-_default_release_rate(enzyme::Symbol) =
-    enzyme === :G6PD ? 1.0 :
-    enzyme === :PGD  ? 1.0 :
-    error("_default_release_rate: unknown enzyme $enzyme")
-
-# The promoted-release rate the pipeline DEPLOYS at (see the cha_deploy_micro call in run.jl,
-# koffQ = release_rate = this value). The apparent-Km readoff defaults to THIS so the reported
-# Km describes the law actually written to model_parameters.jl, not the fit-fiber default.
-# Single source of truth: the deploy call and the readoff both read it, so they cannot drift.
+# THE promoted-release rate: the fit, the deployed law (micro_parameters.jl, the cha_deploy_micro
+# default), the Km readoff and the plotted curves all use this one value, so the emitted constants
+# are the fitted law. It is a CONVENTION (release fast relative to catalysis, C = 1 + kf/r ~ 1 on
+# the kf = 1 gauge), not a measurement. The rate is free only if alpha moves with it: in the
+# forward law (P = 0) the shape depends on alpha/C, so the data pin alpha/C (hence Km = alpha*Kd/C)
+# and evaluating the same alpha at a different rate is a different law. Fits before 0.10.0 ran at
+# r = 1 (C = 2) and deployed that alpha at r = 1e3, doubling every apparent Km. On the G6PD corpus
+# a full refit fits equally well at any r; on the PGD corpus it does not (AGENTS.md).
 const CHA_DEPLOY_RELEASE_RATE = 1.0e3
+
+_default_release_rate(enzyme::Symbol) =
+    enzyme in (:G6PD, :PGD) ? CHA_DEPLOY_RELEASE_RATE :
+    error("_default_release_rate: unknown enzyme $enzyme")
 
 # ABSOLUTE-mode release rate. Large enough that the SS-release fiber factor C = 1 + kf/koffQ ≈ 1
 # across the whole kcat bound (kf ≤ 1000), so kcat ≡ kf and Km ≡ α·Kd exactly (fiber-free).
@@ -421,12 +416,9 @@ end
 #       :Km_PGA  -> alpha*Kd_PGA/C   (PGD apparent PGA Michaelis constant)
 #       :Km_NADP -> alpha*Kd_NADP/C  (PGD or G6PD apparent NADP Michaelis constant)
 #       :Km_G6P  -> alpha*Kd_G6P/C   (G6PD apparent G6P Michaelis constant)
-#   `release_rate` DEFAULTS to `CHA_DEPLOY_RELEASE_RATE` (the koffQ the law is deployed at), so
-#   the readoff describes the DEPLOYED law. The apparent Km is fiber-DEPENDENT (it carries the
-#   1+kf/release_rate factor), so reporting it at any other release_rate -- e.g. the fit-fiber
-#   _default_release_rate(enzyme) -- yields a Km the deployed model does NOT exhibit (a factor
-#   ~2 at r=1 vs the catalysis-limited deploy). For the fiber-INVARIANT constant use
-#   `cha_specificity` (kcat/Km).
+#   `release_rate` defaults to `CHA_DEPLOY_RELEASE_RATE`, the rate the law is fit and deployed at,
+#   so the readoff is the half-saturation of the fitted law. Passing another release_rate reads
+#   the same alpha at a rate it was not fit at, which describes a different law.
 # -----------------------------------------------------------------------------------------
 function cha_apparent_km(enzyme::Symbol, coords::AbstractDict, which::Symbol;
                          kf::Real = 1.0,
@@ -441,11 +433,12 @@ function cha_apparent_km(enzyme::Symbol, coords::AbstractDict, which::Symbol;
     coords[:alpha] * kd / C
 end
 
-# SPECIFICITY constant kcat/Km = kf/(alpha*Kd) for a substrate -- the koffQ-fiber INVARIANT.
-# Apparent kcat and Km each slide along the release-rate fiber (kcat=kf*r/(kf+r),
-# Km=alpha*Kd*r/(kf+r)) but their ratio kf/(alpha*Kd) does not, so this is the constant the
-# forward corpus actually pins regardless of where the unidentifiable koffQ is parked. `which`
-# selects the substrate exactly as `cha_apparent_km`. Units: 1/M on the kf=1 gauge.
+# SPECIFICITY constant kcat/Km = kf/(alpha*Kd) for a substrate. At FIXED alpha the release rate
+# cancels out of this ratio (kcat=kf*r/(kf+r), Km=alpha*Kd*r/(kf+r)), but that is arithmetic, not
+# an invariant of the data: a refit at another rate moves alpha to hold alpha/C, and this value
+# moves with it. Under the centered loss the overall scale is gauged out, so its absolute value
+# means nothing beyond the kf=1 gauge; Km is the constant the corpus pins. `which` selects the
+# substrate exactly as `cha_apparent_km`. Units: 1/M on the kf=1 gauge.
 function cha_specificity(enzyme::Symbol, coords::AbstractDict, which::Symbol; kf::Real = 1.0)
     kd = which === :Km_PGA  ? coords[:Kd_PGA] :
          which === :Km_NADP ? coords[:Kd_NADP] :
@@ -561,8 +554,9 @@ end
 #
 #   MODE 2 — additionally pin the forward inhibition constants to literature:
 #     - both enzymes: :Ki_NADPH → lit[:Ki_NADPH] (G6PD 15µM; PGD 17µM). In Mode 1 Ki_NADPH is
-#       left FREE: G6PD Mode-1 data-identifies it (with Km_NADPH_rev anchored); PGD Mode-1
-#       reports it diagnostic/unconstrained (the cross-term de-conflation was refuted there).
+#       left FREE: G6PD Mode-1 data-identifies it (Km_NADPH_rev is fit unless anchor_reverse);
+#       PGD Mode-1 fit at the deploy koff (0.10.0) data-identifies it too (~22 µM), but that
+#       fit depends on the fixed koff and KdRu, so it is not established.
 #     - G6PD only: :Ki_ATP → lit[:Ki_ATP]. PGD Mode 2 pins Ki_NADPH ALONE, so it isolates that
 #       one literature constant (2026-10-21: the PGD corpus carries no ATP, the Ki_ATP pin was
 #       fit-inert, and the Km_PGA soft anchor and the Mode-3 Km_PGA override were retired).

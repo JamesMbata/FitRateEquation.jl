@@ -20,6 +20,7 @@ using Test
     include("test_cha_deploy.jl")
     include("test_cha_pgd_fullre_deploy_classify.jl")
     include("test_cha_koffq.jl")
+    include("test_fit_at_deploy_fiber.jl")
     include("test_cha_silence.jl")
     include("test_cha_noatp.jl")
     include("test_cha_pgd_noatp.jl")

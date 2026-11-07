@@ -405,9 +405,9 @@ end
 # The DERIVED apparent Michaelis constants to surface per enzyme (NOT cha_coords — they are
 # alpha·Kd/C readoffs via ChaFit.cha_apparent_km). Reported alongside the classed coords so
 # downstream readers still see Km_G6P (G6PD) / Km_PGA (PGD). Class is :derived (a readoff, not
-# a fit/pinned coord). The apparent Km is read at ChaFit.CHA_DEPLOY_RELEASE_RATE so it matches
-# the DEPLOYED law (micro_parameters.jl), and each is paired with the fiber-INVARIANT
-# specificity constant kcat/Km (`kcatKm_*`, class :derived) — the koffQ-robust readoff.
+# a fit/pinned coord). The apparent Km is read at ChaFit.CHA_DEPLOY_RELEASE_RATE, the rate the
+# law is fit and deployed at (micro_parameters.jl), and each is paired with the specificity
+# constant kcat/Km on the kf = 1 gauge (`kcatKm_*`, class :derived).
 _apparent_kms(enzyme::Symbol) =
     enzyme === :G6PD ? (:Km_G6P,) :
     enzyme === :PGD  ? (:Km_PGA, :Km_NADP) :
@@ -416,10 +416,10 @@ _apparent_kms(enzyme::Symbol) =
 function _apparent_km_rows(enzyme::Symbol, coords::AbstractDict, variant::Symbol)
     rows = NamedTuple[]
     for which in _apparent_kms(enzyme)
-        # At deploy koffQ -> deployed law; :full_re is fiber-free (C = 1).
+        # :full_re is fiber-free (C = 1).
         km = ChaFit.cha_apparent_km(enzyme, coords, which; variant=variant)
         push!(rows, (name=which, value=km, class=:derived, ci=NaN))
-        spec = ChaFit.cha_specificity(enzyme, coords, which)   # kcat/Km, koffQ-invariant
+        spec = ChaFit.cha_specificity(enzyme, coords, which)   # kcat/Km, kf = 1 gauge
         push!(rows, (name=Symbol("kcatKm_", String(which)[4:end]),
                      value=spec, class=:derived, ci=NaN))
     end
@@ -526,8 +526,6 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
             logθ = nothing
             try
                 logθ = ChaDeploy.cha_deploy_micro(enzyme, res.r.mech, res.r.fit.coords; keq=keq,
-                                                  koffQ=ChaFit.CHA_DEPLOY_RELEASE_RATE,
-                                                  release_rate=ChaFit.CHA_DEPLOY_RELEASE_RATE,
                                                   variant=res.variant)
             catch err
                 println(io, "# --- $(res.variant) [$(res.mode)] : deploy unavailable ($(err)) ---")
@@ -605,54 +603,52 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
             end
         end
         # Enzyme-specific resolved-decision blocks.
-        enzyme === :G6PD && _write_g6pd_koffq_block(io, results, d, keq; anchor_reverse=anchor_reverse)
+        enzyme === :G6PD && _write_g6pd_koffq_block(io, results, d; anchor_reverse=anchor_reverse)
         print(io, _report_note(enzyme, results))
     end
 end
 
-# G6PD koffQ HYBRID block: deploy the promoted release at a healthy swept default and ALSO
-# report the (weak, wide-CI) data-identified koffQ from the reverse-weighted diagnostic, with
-# the deploy<->data gap and the honest caveat. Guarded so a report-only refit failure never
-# aborts write_outputs.
-function _write_g6pd_koffq_block(io, results, d, keq; anchor_reverse::Bool=false)
-    println(io, "## G6PD koffQ hybrid (promoted NADPH-release fiber)\n")
+# G6PD koffQ block: the deploy convention plus the all-constants-refit profile (ChaKoffqReport).
+# Guarded so a report-only refit failure never aborts write_outputs.
+function _write_g6pd_koffq_block(io, results, d; anchor_reverse::Bool=false)
+    println(io, "## G6PD koffQ hybrid (promoted NADPH-release rate)\n")
     idx = findfirst(r -> r.variant === deploy_variant(:G6PD), results)
     res = results[idx === nothing ? 1 : idx]
-    rvariant = res.variant
     try
-        hr = ChaKoffqReport.koffq_hybrid_report(res.r.mech, d; keq=keq,
-                                                variant=rvariant, koffQ_deploy=1.0e3,
+        hr = ChaKoffqReport.koffq_hybrid_report(res.r.mech, d; variant=res.variant,
                                                 anchor_reverse=anchor_reverse)
-        println(io, "| quantity | value |\n|---|---|")
-        println(io, "| deploy koffQ (swept) | $(hr.deploy_value) |")
-        println(io, "| data-identified koffQ | $(hr.data_identified_value) |")
-        println(io, "| log10 CI | [$(hr.ci[1]), $(hr.ci[2])] |")
-        println(io, "| gap (dex, data − deploy) | $(hr.gap_dex) |")
-        println(io, "| reverse rows used | $(hr.n_reverse) |\n")
-        println(io, "> $(hr.caveat)\n")
+        println(io, "Variant `$(res.variant)`, deployed at koffQ = $(hr.deploy_value). Loss with every ",
+                    "free constant refit at each koffQ, $(hr.n_reverse) PGLn-bearing rows up-weighted:\n")
+        println(io, "| koffQ | loss, all constants refit | alpha | Kd_6PGLn (M) |\n|---|---|---|---|")
+        for p in hr.profile
+            println(io, "| $(p.koffQ) | $(p.loss) | $(p.alpha) | $(p.Kd_6PGLn) |")
+        end
+        println(io, "\n> $(hr.caveat)\n")
     catch err
-        println(io, "> koffQ hybrid report unavailable ($(err))\n")
+        println(io, "> koffQ profile unavailable ($(err))\n")
     end
 end
 
-# Enzyme-specific closing note for report.md. PGD/G6PD: the forward-Ki de-conflation caveat
-# (the G6PD note reports the ACTUAL fitted Mode-1 cross-term Ki_NADPH — fit directly, not
-# hardcoded — at full budget the corpus reads it ABOVE the 9–24 µM literature band). Any other
-# enzyme returns "" (no note).
+# Enzyme-specific closing note for report.md. PGD/G6PD: the forward-Ki de-conflation caveat.
+# Both notes report the ACTUAL fitted Mode-1 cross-term Ki_NADPH and its class (fit directly,
+# not hardcoded), and G6PD also states where it sits relative to the 9-24 µM literature band.
+# Any other enzyme returns "" (no note).
 function _report_note(enzyme::Symbol, results)
     enzyme === :PGD && return string(
         "> **Forward `Ki_NADPH` de-conflation (PGD):** on the Cha law the forward product-\n",
         "> inhibition `Ki_NADPH` is read as the E·PGA dead-end cross term, decoupled from the\n",
         "> bare-[NADPH] reverse-release Km (`Km_NADPH_rev`). It is literature-pinned (Cottreau\n",
-        "> 17 µM) in Mode 2; Mode 1 reports it diagnostic/unconstrained (the forward-only\n",
-        "> cross-term de-conflation was refuted on the PGD corpus — pin-only 17 µM).\n",
+        "> 17 µM) in Mode 2; Mode 1 fits it from the data and lands ", _ki_nadph_desc(results),
+        ".\n> These PGD values are fit with the Ru5P-release rate `koff` and `KdRu` held fixed, and\n",
+        "> the loss depends on both, so they are not established.\n",
         "> FROZEN: do not add SS steps to chase this (see test_rec4_topology_freeze.jl).\n")
     enzyme === :G6PD && return string(
         "> **Forward `Ki_NADPH` de-conflation (G6PD):** the Cha law reads the forward product-\n",
-        "> inhibition `Ki_NADPH` from the E·G6P·NADPH dead-end cross term, with `Km_NADPH_rev`\n",
-        "> anchored (3.9 µM) to break the trade-off with the bare-[NADPH] productive-release\n",
-        "> reverse channel. Cross-term data-id lands Ki_NADPH ", _g6pd_ki_nadph_desc(results),
-        " in Mode 1 (the full-budget corpus reads ABOVE the 9–24 µM literature band); Mode 2\n",
+        "> inhibition `Ki_NADPH` from the E·G6P·NADPH dead-end cross term, kept separate from the\n",
+        "> bare-[NADPH] productive-release reverse channel (`Km_NADPH_rev`). `Km_NADPH_rev` is fit\n",
+        "> from the data by default; it is anchored (3.9 µM) only with `anchor_reverse=true`.\n",
+        "> Cross-term data-id lands Ki_NADPH ", _ki_nadph_desc(results),
+        " in Mode 1", _g6pd_ki_band_phrase(results), "; Mode 2\n",
         "> pins it to the literature 15 µM.\n")
     return ""
 end
@@ -731,14 +727,28 @@ run_pgd(; outdir=nothing, smoke=false, nprocs=nothing) =
     fit_consensus_equation(:pgd; outdir, smoke, nprocs)
 
 # Format the actual Mode-1 G6PD cross-term Ki_NADPH (value + class + CI) for the report note.
-function _g6pd_ki_nadph_desc(results)
+function _mode1_ki_nadph(results)
     i1 = findfirst(r -> r.mode === :mode1, results)
-    i1 === nothing && return "in the forward (tens-of-µM) band"
+    i1 === nothing && return nothing
     j = findfirst(x -> x.name === :Ki_NADPH, results[i1].classed)
-    j === nothing && return "in the forward (tens-of-µM) band"
-    c = results[i1].classed[j]
+    j === nothing ? nothing : results[i1].classed[j]
+end
+
+function _ki_nadph_desc(results)
+    c = _mode1_ki_nadph(results)
+    c === nothing && return "in the forward (tens-of-µM) band"
     c.class === :data_identified && isfinite(c.ci) ?
         string("~", round(c.value * 1e6; sigdigits = 3), " µM (`data_identified`, ±",
                round(c.ci * 1e6; sigdigits = 2), " µM)") :
         string("~", round(c.value * 1e6; sigdigits = 3), " µM (`", c.class, "`)")
+end
+
+# Where the Mode-1 value sits against the 9-24 µM kinetics-literature band (a statement, never
+# a clamp). Empty when there is no Mode-1 Ki_NADPH to compare.
+function _g6pd_ki_band_phrase(results)
+    c = _mode1_ki_nadph(results)
+    c === nothing && return ""
+    v = c.value * 1e6
+    rel = v > 24 ? "ABOVE" : v < 9 ? "BELOW" : "within"
+    string(" (", rel, " the 9–24 µM literature band)")
 end
