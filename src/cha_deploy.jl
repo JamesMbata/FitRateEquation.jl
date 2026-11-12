@@ -34,6 +34,10 @@
 #       K8  = Km_NADPH_rev            (bare-[NADPH] reverse-release Km)
 #       K9  = Ki_ATP    K10 = Ki_ATP_EN    K11 = Ki_NADPH
 #       [:no_atp variant] the two ATP dead-ends (K9/K10) are ABSENT.
+#   G6PD :full_re (fiber-free, no dead ends; free_params K_NADP_E, K_G6P_E, K_G6P_ENADP,
+#   K_NADPH_E, K_PGLn_ENADPH):
+#       K_NADP_E = Kd_NADP    K_G6P_E = Kd_G6P    K_G6P_ENADP = alpha * Kd_G6P
+#       K_NADPH_E = Kd_NADPH  K_PGLn_ENADPH = Kd_6PGLn       (no koff/kon)
 #
 # Gauge: the readoff (and the macro tuple) always carries kf = k5f = 1 and Et = E_total = 1
 # (unit-enzyme gauge); build_params likewise fixes k5f = 1 / E_total = 1, so the deploy micro
@@ -78,6 +82,18 @@ function _deploy_micro_map(enzyme::Symbol, coords::AbstractDict; release_rate::R
         haskey(coords, :Ki_ATP_EN) && (micro[:K_ATPinh_ENADP] = coords[:Ki_ATP_EN])
         haskey(coords, :Ki_NADPH)  && (micro[:K_NADPH_EPGA]   = coords[:Ki_NADPH])
         return micro
+    end
+    # G6PD fully-RE (fiber-free, no dead ends): the 5 coords map straight onto the 5 RE binding
+    # free-params, NO koff/kon fiber (release_rate/release_eq inert). The free ternary basis is
+    # G6P -> E·NADP, so K_G6P_ENADP = alpha*Kd_G6P (detailed-balance box, as the G6PD branch below).
+    if enzyme === :G6PD && variant === :full_re
+        return Dict{Symbol,Float64}(
+            :K_NADP_E      => coords[:Kd_NADP],
+            :K_G6P_E       => coords[:Kd_G6P],
+            :K_G6P_ENADP   => coords[:alpha] * coords[:Kd_G6P],
+            :K_NADPH_E     => coords[:Kd_NADPH],      # competitive free-E NADPH (= reverse-release Kd)
+            :K_PGLn_ENADPH => coords[:Kd_6PGLn],      # PGLn on E·NADPH (RE, no koff/kon)
+        )
     end
     konv = release_rate / release_eq
     if enzyme === :G6PD
@@ -131,9 +147,9 @@ end
 function cha_deploy_micro(enzyme::Symbol, mech, coords::AbstractDict; keq::Real,
                           koffQ::Real = ChaFit.CHA_DEPLOY_RELEASE_RATE,
                           release_rate::Real = koffQ,
-                          release_eq::Real = ChaFit._default_release_eq(enzyme, coords),
-                          kr::Union{Nothing,Real} = nothing,
-                          variant::Symbol = :_deploy)
+                          variant::Symbol = :_deploy,
+                          release_eq::Real = ChaFit._default_release_eq(enzyme, coords, variant),
+                          kr::Union{Nothing,Real} = nothing)
     micro = _deploy_micro_map(enzyme, coords; release_rate=release_rate, release_eq=release_eq,
                               mech=mech, variant=variant)
     fp = free_params(mech)

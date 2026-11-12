@@ -158,6 +158,8 @@ end
 # call fit an ATP-blind law to ATP-bearing rows. Default: no filtering, no label.
 function variant_profile(enzyme::Symbol, variant::Symbol)
     enzyme === :G6PD && variant === :no_atp  && return (row_filter=drop_atp_rows, label="noatp")
+    # G6PD :full_re has no ATP term either, so ATP-bearing rows would be forced misfits.
+    enzyme === :G6PD && variant === :full_re && return (row_filter=drop_atp_rows, label="fullre")
     enzyme === :PGD  && variant === :full_re && return (row_filter=identity,      label="fullre")
     enzyme === :PGD  && variant === :no_atp  && return (row_filter=identity,      label="noatp")
     return (row_filter=identity, label="")
@@ -408,14 +410,17 @@ end
 # a fit/pinned coord). The apparent Km is read at ChaFit.CHA_DEPLOY_RELEASE_RATE, the rate the
 # law is fit and deployed at (micro_parameters.jl), and each is paired with the specificity
 # constant kcat/Km on the kf = 1 gauge (`kcatKm_*`, class :derived).
-_apparent_kms(enzyme::Symbol) =
+# G6PD :full_re also reports Km_NADP: with no fiber and no dead ends both substrate Km's are
+# the plain alpha·Kd readoffs, as for PGD.
+_apparent_kms(enzyme::Symbol, variant::Symbol=:_deploy) =
+    (enzyme === :G6PD && variant === :full_re) ? (:Km_G6P, :Km_NADP) :
     enzyme === :G6PD ? (:Km_G6P,) :
     enzyme === :PGD  ? (:Km_PGA, :Km_NADP) :
     ()
 
 function _apparent_km_rows(enzyme::Symbol, coords::AbstractDict, variant::Symbol)
     rows = NamedTuple[]
-    for which in _apparent_kms(enzyme)
+    for which in _apparent_kms(enzyme, variant)
         # :full_re is fiber-free (C = 1).
         km = ChaFit.cha_apparent_km(enzyme, coords, which; variant=variant)
         push!(rows, (name=which, value=km, class=:derived, ci=NaN))
@@ -602,8 +607,11 @@ function write_outputs(outdir, d, results; meta=nothing, name::AbstractString="G
                 println(io)
             end
         end
-        # Enzyme-specific resolved-decision blocks.
-        enzyme === :G6PD && _write_g6pd_koffq_block(io, results, d; anchor_reverse=anchor_reverse)
+        # Enzyme-specific resolved-decision blocks. The koffQ block profiles the promoted NADPH
+        # release, which G6PD :full_re does not have, so a :full_re-only run skips it.
+        if enzyme === :G6PD && !_g6pd_fullre_only(enzyme, results)
+            _write_g6pd_koffq_block(io, results, d; anchor_reverse=anchor_reverse)
+        end
         print(io, _report_note(enzyme, results))
     end
 end
@@ -629,11 +637,23 @@ function _write_g6pd_koffq_block(io, results, d; anchor_reverse::Bool=false)
     end
 end
 
+# True when every result is the G6PD :full_re variant (its report has no koffQ block and its
+# own NADPH note). A mixed-variant run keeps the existing G6PD blocks.
+_g6pd_fullre_only(enzyme::Symbol, results) =
+    enzyme === :G6PD && !isempty(results) && all(r -> r.variant === :full_re, results)
+
 # Enzyme-specific closing note for report.md. PGD/G6PD: the forward-Ki de-conflation caveat.
 # Both notes report the ACTUAL fitted Mode-1 cross-term Ki_NADPH and its class (fit directly,
 # not hardcoded), and G6PD also states where it sits relative to the 9-24 µM literature band.
 # Any other enzyme returns "" (no note).
 function _report_note(enzyme::Symbol, results)
+    _g6pd_fullre_only(enzyme, results) && return string(
+        "> **NADPH product inhibition (G6PD `:full_re`):** this law has no dead ends, so NADPH\n",
+        "> acts only as a competitive free-enzyme ligand, through the single constant `Kd_NADPH`\n",
+        "> (forward inhibition and reverse release are the same constant). There is no separate\n",
+        "> forward `Ki_NADPH` and no `Km_NADPH_rev`, so `anchor_reverse` and the NOT DEPLOYABLE\n",
+        "> banner do not apply: read `Kd_NADPH`'s class in the table above. The law is\n",
+        "> fiber-free (`C = 1`), so there is no koffQ block.\n")
     enzyme === :PGD && return string(
         "> **Forward `Ki_NADPH` de-conflation (PGD):** on the Cha law the forward product-\n",
         "> inhibition `Ki_NADPH` is read as the E·PGA dead-end cross term, decoupled from the\n",

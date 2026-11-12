@@ -43,6 +43,24 @@ function _g6pd_consensus_noatp()
     ], extra))
 end
 
+# Fully rapid-equilibrium core (:full_re): _g6pd_consensus_noatp()'s steps with NO dead ends and
+# the NADPH release taken to its RE limit (⇌). Catalysis is the only SS step (gauge anchor).
+# Product release is ordered PGLn first, NADPH last, so NADPH binds FREE E: one competitive
+# constant (Kd_NADPH = K_NADPH_E) serves both the forward product inhibition and the reverse
+# release. No regulator. free_params = the 5 RE dissociation constants, which map bijectively
+# onto the :full_re coords (cha_deploy_micro branch).
+function _g6pd_fullre_core()
+    _mech([:NADP, :G6P], [:NADPH, :PGLn], [
+        ([:E, :NADP],   [:E_N],  :(⇌)),
+        ([:E, :G6P],    [:E_G],  :(⇌)),
+        ([:E_N, :G6P],  [:E_NB], :(⇌)),
+        ([:E_G, :NADP], [:E_NB], :(⇌)),
+        ([:E_NB],       [:E_C],  :(<-->)),            # catalysis (forced SS, gauge anchor)
+        ([:E_C], [:E_H, :PGLn],  :(⇌)),               # PGLn release (RE, first out)
+        ([:E_H], [:E, :NADPH],   :(⇌)),               # NADPH release (RE, last)
+    ]; regs=Symbol[])
+end
+
 # Three dead-end-dropped ablation variants, each an exact ∞-limit of _g6pd_consensus(:(<-->))
 # (the deployed SS_NADPH_release_rate_eq law): unlike :no_atp/:no_g6p_nadph_deadend below,
 # these do NOT remove ATP as a metabolite (E·ATP, K8=Ki_ATP, is kept in all three), so
@@ -122,7 +140,8 @@ register_enzyme!(EnzymeWiring(
      (name=:no_atp,                    mech=_g6pd_consensus_noatp()),
      (name=:no_g6p_nadph_deadend,      mech=_g6pd_consensus_no_g6p_nadph_deadend()),
      (name=:no_g6p_atp_deadend,        mech=_g6pd_consensus_no_g6p_atp_deadend()),
-     (name=:no_g6p_both_deadends,      mech=_g6pd_consensus_no_g6p_both_deadends())],
+     (name=:no_g6p_both_deadends,      mech=_g6pd_consensus_no_g6p_both_deadends()),
+     (name=:full_re,                   mech=_g6pd_fullre_core())],
     Dict{Symbol,Float64}(
         # 6-phospho-δ-gluconolactone (the TRUE product) reverse-reaction Km, Beutler & Kuhl 1986
         # Fig 2a (1027 ± 183 µM, pH 7.0, 25 °C). Was 200 µM, the mean of the γ-lactone analogue

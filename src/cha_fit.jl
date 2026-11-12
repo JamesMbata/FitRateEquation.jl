@@ -75,6 +75,10 @@ const CHA_KDRU_DEFAULT = 1.0
 # off this). For every relative-mode caller (the default) the returned coord set is unchanged.
 function cha_coords(enzyme::Symbol, variant::Symbol=:_deploy; scale::Symbol=:relative)
     base = if enzyme === :G6PD
+        variant === :full_re ?
+            # Fully-RE (fiber-free): no promoted-release fiber, no dead ends, no ATP. Kd_NADPH is
+            # the single competitive NADPH constant (forward inhibition and reverse release).
+            [:Kd_NADP, :Kd_G6P, :alpha, :Kd_NADPH, :Kd_6PGLn] :
         variant === :no_atp ?
             [:Kd_NADP, :Kd_G6P, :Kd_6PGLn, :alpha, :Ki_NADPH, :Km_NADPH_rev] :
         variant === :no_g6p_nadph_deadend ?
@@ -110,8 +114,8 @@ end
 #     PGD  -> KdRu (Ru5P-release equilibrium, distinct from Km_NADPH_rev).
 # -----------------------------------------------------------------------------------------
 function cha_haldane_kr(enzyme::Symbol, coords::AbstractDict; keq::Real, release_rate::Real,
-                        kf::Real, release_eq::Real = _default_release_eq(enzyme, coords),
-                        variant::Symbol = :_deploy)
+                        kf::Real, variant::Symbol = :_deploy,
+                        release_eq::Real = _default_release_eq(enzyme, coords, variant))
     _haldane_kr(_cha_law(enzyme, variant), coords, keq, kf, release_eq)
 end
 
@@ -119,7 +123,7 @@ end
 # on this function's type, so choosing the law once fixes the types of the whole row loop. Taking
 # these choices at run time from `enzyme::Symbol` on every row is what made the loss slow.
 function _cha_law(enzyme::Symbol, variant::Symbol = :_deploy)
-    enzyme === :G6PD && return cha_rate_G6PD
+    enzyme === :G6PD && return variant === :full_re ? cha_rate_G6PD_fullRE : cha_rate_G6PD
     enzyme === :PGD  && return variant === :full_re ? cha_rate_PGD_fullRE : cha_rate_PGD
     error("_cha_law: unknown enzyme $enzyme (expected :G6PD or :PGD)")
 end
@@ -143,11 +147,21 @@ end
     coords[:Kd_NADPH] * coords[:Kd_Ru5P] * coords[:Kd_CO2] * kf /
     (coords[:Kd_NADP] * coords[:Kd_PGA] * coords[:alpha] * keq)
 
-# Default release equilibrium per enzyme (see module header).
-_default_release_eq(enzyme::Symbol, coords) = _default_release_eq(_cha_law(enzyme), coords)
+# Fully-RE G6PD: no promoted-release fiber. kr = kf·Kd_NADPH·Kd_6PGLn / (Keq·α·Kd_NADP·Kd_G6P).
+# release_eq is inert here (fiber-free); accepted for signature parity.
+@inline _haldane_kr(::typeof(cha_rate_G6PD_fullRE), coords, keq, kf, release_eq) =
+    coords[:Kd_NADPH] * coords[:Kd_6PGLn] * kf /
+    (coords[:Kd_NADP] * coords[:Kd_G6P] * coords[:alpha] * keq)
+
+# Default release equilibrium per (enzyme, variant) law (see module header). The variant only
+# changes the law for :full_re; every other variant resolves to the same law as before.
+_default_release_eq(enzyme::Symbol, coords, variant::Symbol = :_deploy) =
+    _default_release_eq(_cha_law(enzyme, variant), coords)
 @inline _default_release_eq(::typeof(cha_rate_G6PD), coords) = coords[:Km_NADPH_rev]
 @inline _default_release_eq(::Union{typeof(cha_rate_PGD),typeof(cha_rate_PGD_fullRE)}, coords) =
     CHA_KDRU_DEFAULT
+# G6PD :full_re has no promoted release, so its release equilibrium is inert (never read).
+@inline _default_release_eq(::typeof(cha_rate_G6PD_fullRE), coords) = 1.0
 
 # -----------------------------------------------------------------------------------------
 #   Assemble the FULL named tuple `cha_rate_*` consumes from (free coords + gauge/fiber/
@@ -158,9 +172,9 @@ _default_release_eq(enzyme::Symbol, coords) = _default_release_eq(_cha_law(enzym
 function cha_macro_tuple(enzyme::Symbol, coords::AbstractDict; keq::Real,
                          kf::Real = 1.0, Et::Real = 1.0,
                          release_rate::Real = _default_release_rate(enzyme),
-                         release_eq::Real = _default_release_eq(enzyme, coords),
-                         kr::Union{Nothing,Real} = nothing,
-                         variant::Symbol = :_deploy)
+                         variant::Symbol = :_deploy,
+                         release_eq::Real = _default_release_eq(enzyme, coords, variant),
+                         kr::Union{Nothing,Real} = nothing)
     _macro_tuple(_cha_law(enzyme, variant), coords, keq, kf, Et, release_rate, release_eq, kr)
 end
 
@@ -220,6 +234,19 @@ end
     tup = _with_dead_end(tup, coords, :Ki_ATP)
     tup = _with_dead_end(tup, coords, :Ki_ATP_EN)
     _with_dead_end(tup, coords, :Ki_NADPH)
+end
+
+# G6PD fully-RE variant: NO promoted SS-release fiber (no koffQ/konQ; C = 1), no dead ends. The
+# reverse arm is carried entirely by the Haldane kr.
+@inline function _macro_tuple(law::typeof(cha_rate_G6PD_fullRE), coords, keq, kf, Et,
+                              release_rate, release_eq, kr)
+    krv = _resolve_kr(kr, law, coords, keq, kf, release_eq)
+    (; Kd_NADP  = coords[:Kd_NADP],
+       Kd_G6P   = coords[:Kd_G6P],
+       alpha    = coords[:alpha],
+       Kd_NADPH = coords[:Kd_NADPH],
+       Kd_6PGLn = coords[:Kd_6PGLn],
+       kf = kf, kr = krv, Et = Et, Keq = keq)
 end
 
 Base.@constprop :aggressive @inline _with_dead_end(tup, coords, s::Symbol) =
@@ -311,8 +338,9 @@ end
 function _cha_row_logratios!(logratio, enzyme::Symbol, mech, d::Dataset, coords::AbstractDict;
                              keq::Union{Nothing,Real}=nothing, kf::Real = 1.0, Et::Real = 1.0,
                              release_rate::Real = _default_release_rate(enzyme),
-                             release_eq::Real = _default_release_eq(enzyme, coords),
-                             kr::Union{Nothing,Real} = nothing, variant::Symbol = :_deploy)
+                             variant::Symbol = :_deploy,
+                             release_eq::Real = _default_release_eq(enzyme, coords, variant),
+                             kr::Union{Nothing,Real} = nothing)
     data = _ChaLossData(enzyme, d, keq, variant)
     penalty = _fill_logratios!(logratio, data, coords, kf, Et, release_rate, release_eq, kr)
     (penalty, data.groups)
@@ -353,9 +381,9 @@ function cha_centered_logratio_loss(enzyme::Symbol, mech, d::Dataset,
                                     coords::AbstractDict; keq::Union{Nothing,Real}=nothing,
                                     kf::Real = 1.0, Et::Real = 1.0,
                                     release_rate::Real = _default_release_rate(enzyme),
-                                    release_eq::Real = _default_release_eq(enzyme, coords),
-                                    kr::Union{Nothing,Real} = nothing,
-                                    variant::Symbol = :_deploy)
+                                    variant::Symbol = :_deploy,
+                                    release_eq::Real = _default_release_eq(enzyme, coords, variant),
+                                    kr::Union{Nothing,Real} = nothing)
     data = _ChaLossData(enzyme, d, keq, variant)
     _centered_loss(data, _fill_logratios!(data.logratio, data, coords, kf, Et, release_rate,
                                           release_eq, kr))
@@ -368,9 +396,9 @@ end
 # per-row scale lives in `d.Et`.
 function cha_absolute_logratio_loss(enzyme::Symbol, mech, d::Dataset, coords::AbstractDict;
         keq::Union{Nothing,Real}=nothing, kf::Real=1.0,
-        release_rate::Real = CHA_ABS_RELEASE_RATE,
-        release_eq::Real = _default_release_eq(enzyme, coords),
-        kr::Union{Nothing,Real}=nothing, variant::Symbol=:_deploy)
+        release_rate::Real = CHA_ABS_RELEASE_RATE, variant::Symbol=:_deploy,
+        release_eq::Real = _default_release_eq(enzyme, coords, variant),
+        kr::Union{Nothing,Real}=nothing)
     data = _ChaLossData(enzyme, d, keq, variant)
     _absolute_loss(data, _fill_logratios!(data.logratio, data, coords, kf, 1.0, release_rate,
                                           release_eq, kr))
@@ -397,7 +425,7 @@ end
 # pulling each metabolite by field name (absent field => 0.0, the law's "species absent").
 _cha_field(cc, s) = hasproperty(cc, s) ? getproperty(cc, s) : 0.0
 _cha_row_kwargs(enzyme::Symbol, cc) = _law_row_kwargs(_cha_law(enzyme), cc)
-@inline _law_row_kwargs(::typeof(cha_rate_G6PD), cc) =
+@inline _law_row_kwargs(::Union{typeof(cha_rate_G6PD),typeof(cha_rate_G6PD_fullRE)}, cc) =
     (NADP = _cha_field(cc, :NADP), G6P = _cha_field(cc, :G6P),
      NADPH = _cha_field(cc, :NADPH), PGLn = _cha_field(cc, :PGLn),
      ATP = _cha_field(cc, :ATP))
@@ -471,8 +499,9 @@ function cha_apparent_km(enzyme::Symbol, coords::AbstractDict, which::Symbol;
                          kf::Real = 1.0,
                          release_rate::Real = CHA_DEPLOY_RELEASE_RATE,
                          variant::Symbol = :_deploy)
-    # Fully-RE PGD is fiber-free: C = 1, so apparent Km == alpha*Kd exactly.
-    C = (enzyme === :PGD && variant === :full_re) ? 1.0 : 1 + kf / release_rate
+    # Fully-RE PGD and G6PD are fiber-free: C = 1, so apparent Km == alpha*Kd exactly.
+    C = ((enzyme === :PGD && variant === :full_re) ||
+         (enzyme === :G6PD && variant === :full_re)) ? 1.0 : 1 + kf / release_rate
     kd = which === :Km_PGA  ? coords[:Kd_PGA] :
          which === :Km_NADP ? coords[:Kd_NADP] :
          which === :Km_G6P  ? coords[:Kd_G6P] :

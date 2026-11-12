@@ -139,6 +139,7 @@ are thin aliases for the deployed-law call, kept for discoverability.
 | G6PD | Ablation — drops the E·G6P·NADPH dead-end | `fit_consensus_equation(:g6pd; variants=[:no_g6p_nadph_deadend])` |
 | G6PD | Ablation — drops both G6P dead-ends | `fit_consensus_equation(:g6pd; variants=[:no_g6p_both_deadends])` |
 | G6PD | Pure rapid-equilibrium form (conflation diagnostic; not deployable) | `fit_consensus_equation(:g6pd; variants=[:RE_rate_eq])` |
+| G6PD | Fully rapid-equilibrium, no dead ends and no ATP term — textbook reversible random Bi-Bi with NADPH as a plain competitive product (evaluation only; ATP-bearing rows filtered out) | `fit_consensus_equation(:g6pd; variants=[:full_re])` |
 | PGD | **Consensus law (not deployed; PentosePhosphatePathway.jl still uses an older C2 law)** — Topham Bi-Ter, steady-state Ru5P release | `run_pgd()` or `fit_consensus_equation(:pgd)` |
 | PGD | Fully rapid-equilibrium (evaluation only) | `fit_consensus_equation(:pgd; variants=[:full_re])` |
 | PGD | ATP-free — the consensus law with both ATP dead-ends removed (evaluation only; keeps every row) | `fit_consensus_equation(:pgd; variants=[:no_atp])` |
@@ -154,7 +155,8 @@ bundled PGD corpus has no ATP rows, so on it `:no_atp` and the consensus law fit
 Every call takes the same `smoke`, `nprocs`, and `outdir` keywords as in the
 [Quickstart](#4-quickstart), and any of these fits can be launched from the
 [command line](#8-command-line) with `--variant NAME`. The `:full_re` PGD variant
-has its own write-up in [§10](#10-an-alternative-pgd-rate-law-full_re); for the full
+has its own write-up in [§10](#10-an-alternative-pgd-rate-law-full_re), which also
+describes its G6PD counterpart; for the full
 technical detail on every variant — what each dead-end means and why the ablations
 exist — see [`AGENTS.md`](AGENTS.md).
 
@@ -303,6 +305,23 @@ NADPH slows the enzyme down. It is an **evaluation variant only** — it is not
 wired into the downstream simulation model. The full write-up of what it does
 and how it compares is in
 [`docs/pgd_fullre_evaluation.md`](docs/pgd_fullre_evaluation.md).
+
+G6PD has the same kind of variant (added in 0.11.0):
+
+```julia
+fit_consensus_equation(:g6pd; variants=[:full_re])
+```
+
+It is the textbook reversible rate law for G6PD: the two substrates (NADP and G6P)
+bind in either order, the chemical step is the only slow step, the products
+leave in a fixed order (the lactone first, then NADPH), and there are no
+inhibitor side-complexes and no ATP term. NADPH therefore slows the enzyme only
+by competing with NADP for the free enzyme. Because the law has no ATP term, the
+rows measured with ATP are left out of the fit. It fits five constants (the
+NADP, G6P, NADPH and lactone dissociation constants, and the interaction factor
+`alpha` between the two substrate sites) and writes the same eight files into a
+folder labeled `G6PD_fullre_...`. It is an evaluation variant: nothing in the
+package deploys it.
 
 ## 11. Absolute-scale fitting (G6PD)
 

@@ -117,6 +117,34 @@ function cha_micro_from_macro_G6PD(mac; koffQ::Real)
        Km_G6P_apparent  = get(mac, :Km_G6P_apparent, NaN))
 end
 
+export cha_macro_readoffs_G6PD_fullRE
+
+# Read a Cha macro tuple off the FULLY-RE G6PD micro mechanism (:full_re, _g6pd_fullre_core).
+# The G6PD twin of cha_macro_readoffs_PGD_fullRE: no promoted SS-release fiber (C = 1, no
+# koffQ/konQ symbols) and no dead ends, so every coord is an RE dissociation constant read
+# directly. G6PD's free ternary basis is G6P -> E·NADP (K_G6P_ENADP = alpha*Kd_G6P; see
+# cha_deploy.jl), so alpha = K_G6P_ENADP / Kd_G6P.
+function cha_macro_readoffs_G6PD_fullRE(m, logθ; keq::Real)
+    vals = FitRateEquation._micro_values(m, logθ; keq=keq)
+    _need(s) = haskey(vals, s) ? vals[s] :
+        error("cha_macro_readoffs_G6PD_fullRE: micro param $s absent (upstream rename?)")
+
+    # Catalysis gauge kf + Haldane reverse kr, bound by shape (as _g6pd_cha_symbols).
+    kf_sym = gauge_param(m)
+    kr_sym = _only_sym(_cha_all_ksyms(m), s -> _is_kto(s) && s != kf_sym,
+                       "reverse chemistry rate")
+
+    Kd_NADP  = _need(:K_NADP_E)             # E + NADP
+    Kd_G6P   = _need(:K_G6P_E)              # E + G6P
+    Kd_NADPH = _need(:K_NADPH_E)            # E + NADPH (competitive; = reverse-release Kd)
+    Kd_6PGLn = _need(:K_PGLn_ENADPH)        # PGLn on E·NADPH (RE, no koff/kon)
+    alpha    = _need(:K_G6P_ENADP) / Kd_G6P # ternary: K_G6P_ENADP = alpha*Kd_G6P
+
+    (; Kd_NADP, Kd_G6P, alpha, Kd_NADPH, Kd_6PGLn,
+       kf = vals[kf_sym], kr = vals[kr_sym], Et = vals[:E_total],
+       Keq = get(vals, :Keq, NaN))
+end
+
 export cha_macro_readoffs_PGD, cha_micro_from_macro_PGD
 export cha_macro_readoffs_PGD_fullRE
 

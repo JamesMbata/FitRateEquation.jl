@@ -84,6 +84,57 @@ function cha_rate_G6PD(m; NADP=0.0, G6P=0.0, NADPH=0.0, PGLn=0.0, ATP=0.0, BPG=0
     return Et * v_over_E / (D_pool + S_over_E)
 end
 
+export cha_rate_G6PD_fullRE
+
+# =========================================================================================
+#     Cha-form FULLY-RAPID-EQUILIBRIUM G6PD rate law (only catalysis is steady-state)
+# =========================================================================================
+#
+# The G6PD twin of `cha_rate_PGD_fullRE` (the :full_re variant, _g6pd_fullre_core in
+# src/enzymes/g6pd.jl): random RE binding of NADP and G6P, catalysis the SINGLE steady-state
+# step (the gauge), ordered RE product release PGLn first, NADPH last, NO dead ends and NO ATP
+# term. There is no promoted SS-release fiber (no koffQ/konQ, no super-node, C = 1). NADPH is
+# released last, so it binds FREE E: the bare-[NADPH] term is a competitive product-inhibition
+# term (Kd_NADPH), which is also the reverse-release constant. PGLn binds only E·NADPH
+# (Kd_6PGLn); E·NADPH·PGLn is the product central complex that carries the reverse arm.
+#
+#   A = NADP, B = G6P, Q = NADPH, P = PGLn (6-phosphogluconolactone).
+#   kf = catalysis fwd (gauge = 1); kr = catalysis rev, Haldane-determined by the caller:
+#       kr = kf·Kd_NADPH·Kd_6PGLn / (alpha·Kd_NADP·Kd_G6P·Keq).
+#   Keq on the macro tuple is provenance only; the reverse arm is fully determined by kr.
+#
+# Macro tuple `m` fields consumed: Kd_NADP, Kd_G6P, alpha, Kd_NADPH, Kd_6PGLn, kf, kr, Et.
+# Concentrations are keyword args (default 0 => species absent). ATP/BPG/PGA are accepted (and
+# ignored) so a caller that passes the G6PD row kwargs needs no special case. Every term of D is
+# non-negative and D >= 1, so the rate is finite whenever the constants are positive.
+function cha_rate_G6PD_fullRE(m; NADP=0.0, G6P=0.0, NADPH=0.0, PGLn=0.0, ATP=0.0, BPG=0.0,
+                              PGA=0.0)
+    A = NADP; B = G6P; Q = NADPH; P = PGLn
+
+    Kd_NADP  = m.Kd_NADP
+    Kd_G6P   = m.Kd_G6P
+    alpha    = m.alpha
+    Kd_NADPH = m.Kd_NADPH      # competitive free-E NADPH constant (= reverse-release Kd)
+    Kd_6PGLn = m.Kd_6PGLn      # PGLn on E·NADPH
+    kf       = m.kf
+    kr       = m.kr
+    Et       = m.Et
+
+    gAB = A * B / (alpha * Kd_NADP * Kd_G6P)       # E·NADP·G6P   (substrate central complex)
+    gQP = Q * P / (Kd_NADPH * Kd_6PGLn)            # E·NADPH·PGLn (product central complex)
+
+    # Partition function relative to free E: substrate side + ordered-RE product side.
+    D = 1.0 +
+        A / Kd_NADP +
+        B / Kd_G6P +
+        gAB +
+        Q / Kd_NADPH +                             # E·NADPH (competitive)
+        gQP
+
+    # Net flux through the single SS catalytic step.
+    return Et * (kf * gAB - kr * gQP) / D
+end
+
 export cha_rate_PGD
 export cha_rate_PGD_fullRE
 

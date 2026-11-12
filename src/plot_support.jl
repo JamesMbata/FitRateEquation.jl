@@ -93,7 +93,8 @@ _cha_adapter_tuple(a::ChaAdapter, keq::Real) =
     ChaFit.cha_macro_tuple(a.enzyme, a.coords; keq = keq, variant = a.variant)
 
 function EnzymeRates.rate_equation(a::ChaAdapter, concs, params)
-    ratefn = a.enzyme === :G6PD ? ChaLaws.cha_rate_G6PD :
+    ratefn = a.enzyme === :G6PD ? (a.variant === :full_re ? ChaLaws.cha_rate_G6PD_fullRE :
+                                                            ChaLaws.cha_rate_G6PD) :
              a.enzyme === :PGD  ? (a.variant === :full_re ? ChaLaws.cha_rate_PGD_fullRE :
                                                             ChaLaws.cha_rate_PGD) :
              error("ChaAdapter rate_equation: unknown enzyme $(a.enzyme)")

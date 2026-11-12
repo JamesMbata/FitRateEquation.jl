@@ -79,6 +79,32 @@ not deployed into `PentosePhosphatePathway.jl`. See
 [`docs/pgd_fullre_evaluation.md`](docs/pgd_fullre_evaluation.md) for the fit / CV /
 Holten findings and the α = 1 recommendation.
 
+G6PD has the matching **`:full_re`** variant (0.11.0; `fit_consensus_equation(:g6pd;
+variants=[:full_re])`). Mechanism: `_g6pd_consensus_noatp()`'s steps with **no dead ends**
+and NADPH release taken to its rapid-equilibrium limit (`⇌`), `regs=Symbol[]`
+(`_g6pd_fullre_core`, `src/enzymes/g6pd.jl`). Catalysis is the only SS step; release is
+ordered PGLn → NADPH, so NADPH binds free E and is a **competitive** product (one constant,
+`Kd_NADPH`, serves the forward inhibition and the reverse release). Coords
+`Kd_NADP, Kd_G6P, alpha, Kd_NADPH, Kd_6PGLn`; law `ChaLaws.cha_rate_G6PD_fullRE`
+(A = NADP, B = G6P, Q = NADPH, P = PGLn):
+
+```
+gAB = A·B/(α·Kd_NADP·Kd_G6P)        gQP = Q·P/(Kd_NADPH·Kd_6PGLn)
+D   = 1 + A/Kd_NADP + B/Kd_G6P + gAB + Q/Kd_NADPH + gQP
+kr  = kf·Kd_NADPH·Kd_6PGLn/(α·Kd_NADP·Kd_G6P·Keq)       (Haldane)
+v   = Et·(kf·gAB − kr·gQP)/D
+```
+
+Readoff `ChaInvert.cha_macro_readoffs_G6PD_fullRE`; deploy micro names `K_NADP_E`,
+`K_G6P_E`, `K_G6P_ENADP` (= α·Kd_G6P), `K_NADPH_E`, `K_PGLn_ENADPH` (no koff/kon). It is
+fiber-free (`C = 1`, `Km_NADP = α·Kd_NADP`, `Km_G6P = α·Kd_G6P`, both reported as derived
+rows), runs Mode 1 only, and drops ATP-bearing rows (`drop_atp_rows`, outdir label
+`fullre`). The report omits the koffQ block (no promoted release) and the
+`NOT DEPLOYABLE` banner never fires for it (it has neither `Ki_NADPH` nor `Km_NADPH_rev`);
+read `Kd_NADPH`'s class in `macro_constants.csv`. Every code path is guarded on
+`enzyme === :G6PD && variant === :full_re`, so the other G6PD variants are unchanged.
+Evaluation-only: not deployed into `PentosePhosphatePathway.jl` by this package.
+
 The numeric Cha laws are exactness-anchored against `EnzymeRates.rate_equation` for
 the real micro mechanism at **120/120 @ rtol 1e-10** — this exactness anchor is
 carried forward as the package's `test/test_cha_laws.jl` / `test_cha_pgd_laws.jl`
@@ -122,6 +148,7 @@ data-identifiable forward shape constants:
 | PGD  | `Kd_NADP`, `Kd_PGA`, `alpha`, `Kd_CO2`, `Ki_NADPH`, `Ki_ATP`, `Ki_ATP_EN`, `Km_NADPH_rev` |
 | PGD `:no_atp` | as `:cha_base` without `Ki_ATP`, `Ki_ATP_EN` |
 | PGD `:full_re` | `Kd_NADP`, `Kd_PGA`, `alpha`, `Kd_NADPH`, `Kd_Ru5P`, `Kd_CO2` |
+| G6PD `:full_re` | `Kd_NADP`, `Kd_G6P`, `alpha`, `Kd_NADPH`, `Kd_6PGLn` |
 
 The **apparent Michaelis constants** are NOT coords — they are **derived** readoffs
 `Km = alpha·Kd / C`, `C = 1+kf/release_rate` (`cha_apparent_km`): `Km_G6P` (G6PD);
@@ -237,8 +264,8 @@ ablation variant to be the deployed law outright).
 Each (enzyme, variant) is fit in **modes** (`modes_for`: `mode1, mode2`), written to
 separate, never-cross-ranked leaderboards. Pins are resolved structurally by
 `ChaFit.resolve_cha_pins`. `modes_for` drops Mode 2 for a variant it would leave
-identical to Mode 1 (no extra pin) — PGD `:full_re` has no `Ki_NADPH` coord, so it runs
-`mode1` only.
+identical to Mode 1 (no extra pin) — PGD and G6PD `:full_re` have no `Ki_NADPH` (or
+`Ki_ATP`) coord, so they run `mode1` only.
 
 - **Mode 1** — free fit. The data-only, family-agnostic headline. (G6PD pins
   `Km_NADPH_rev` in *all* modes only with the opt-in `anchor_reverse=true`.)
@@ -388,7 +415,8 @@ There is no `run_g6pd_noatp` / `run_pgd_fullre`: use
   ```
 - **Fit variants per enzyme:** G6PD `:SS_NADPH_release_rate_eq` (deploy) + `:no_atp`
   (ATP-free) + the dead-end-dropped ablations `:no_g6p_nadph_deadend`,
-  `:no_g6p_atp_deadend`, `:no_g6p_both_deadends`; PGD `:cha_base` (deploy) + `:full_re`
+  `:no_g6p_atp_deadend`, `:no_g6p_both_deadends` + `:full_re` (fully-RE, no dead ends, no
+  ATP; drops ATP rows); PGD `:cha_base` (deploy) + `:full_re`
   (fully-RE evaluation variant) + `:no_atp` (ATP-free `:cha_base`, evaluation variant;
   keeps every row). All are
   selected the same way — `fit_consensus_equation(:enzyme; variants=[…])` — with no
